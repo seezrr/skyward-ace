@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>SKYWARD ACE</title>
+<title>HALCYON — golden hour flight</title>
+<meta name="description" content="Halcyon is a calm, arcade flight game over a procedural archipelago at golden hour.">
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="./src/style.css">
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
@@ -12,58 +13,121 @@
 <canvas id="scene"></canvas>
 <canvas id="hud"></canvas>
 
+<div id="fallback" class="fallback hidden">
+  <div class="fallback-card">
+    <div class="panel-kicker">FLIGHT HOLD</div>
+    <h2>WebGL2 is needed to fly</h2>
+    <p>Halcyon paints its sky, ocean and islands directly in your browser. Please open this page in an up-to-date desktop browser with hardware acceleration enabled.</p>
+  </div>
+</div>
+
 <div id="menu" class="screen">
+  <div class="menu-corner">MAKE.FUN · ARCADE FLIGHT</div>
   <div class="title-wrap">
-    <div class="eyebrow">ARC FLIGHT COMBAT · ARCHIPELAGO 07</div>
-    <h1>SKYWARD<span>ACE</span></h1>
-    <div class="subtitle">Pick a sortie. The sky is already moving.</div>
+    <div class="eyebrow">A CALM FLIGHT THROUGH THE LAST LIGHT</div>
+    <h1>HALCYON</h1>
+    <div class="subtitle">Thread the light. Ride the wind. Outrun the sunset.</div>
   </div>
   <div class="mode-grid">
-    <button class="mode-card" data-mode="wave">
-      <span class="card-num">01</span>
-      <span class="card-name">WAVE DEFENSE</span>
-      <span class="card-desc">Hold the carrier fleet against four escalating waves.</span>
-      <span class="card-cta">LAUNCH INTERCEPT &nbsp;›</span>
-    </button>
     <button class="mode-card" data-mode="ring">
-      <span class="card-num">02</span>
-      <span class="card-name">RING TRIAL</span>
-      <span class="card-desc">Thread ten stone rings. Chain combos against the clock.</span>
-      <span class="card-cta">START RUN &nbsp;›</span>
+      <span class="card-num">01</span>
+      <span class="card-name">RING RUN</span>
+      <span class="card-desc">Chain glowing rings before the sun slips below the horizon. Close passes paint wind streaks.</span>
+      <span class="card-cta">BEGIN THE RUN&nbsp; ›</span>
     </button>
     <button class="mode-card" data-mode="free">
-      <span class="card-num">03</span>
+      <span class="card-num">02</span>
       <span class="card-name">FREE FLIGHT</span>
-      <span class="card-desc">No rules. Roll, skim the surf, learn the island winds.</span>
-      <span class="card-cta">TAKE OFF &nbsp;›</span>
+      <span class="card-desc">No timer, no pressure. Gather sky lanterns and climb the warm updrafts over the islands.</span>
+      <span class="card-cta">TAKE OFF&nbsp; ›</span>
+    </button>
+    <button class="mode-card" data-mode="daily">
+      <span class="card-num">03</span>
+      <span class="card-name">DAILY SEED</span>
+      <span class="card-desc">One course for everyone today. Your best run stays on this device.</span>
+      <span class="card-cta" id="daily-label">FLY TODAY’S COURSE&nbsp; ›</span>
     </button>
   </div>
-  <div class="keys">W/S pitch &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Q/E rudder &nbsp;·&nbsp; SHIFT boost &nbsp;·&nbsp; CTRL brake &nbsp;·&nbsp; SPACE guns &nbsp;·&nbsp; F missile &nbsp;·&nbsp; C camera &nbsp;·&nbsp; M mute &nbsp;·&nbsp; ESC pause</div>
+  <div class="menu-footer">
+    <button id="controls-btn" class="text-btn">CONTROLS</button>
+    <span class="dot">·</span>
+    <button id="settings-btn" class="text-btn">SETTINGS</button>
+    <span class="dot">·</span>
+    <span>HEADPHONES RECOMMENDED · SOUND IS SYNTHESISED</span>
+  </div>
+</div>
+
+<div id="controls-card" class="overlay hidden">
+  <div class="sheet">
+    <div class="sheet-head"><span class="panel-kicker">FLIGHT MANUAL</span><button class="close-btn" data-close="controls-card">ESC</button></div>
+    <h2>Controls</h2>
+    <div class="control-grid">
+      <div><b>W / S</b><span>pitch down / up</span></div>
+      <div><b>A / D</b><span>roll left / right</span></div>
+      <div><b>Q / E</b><span>rudder yaw</span></div>
+      <div><b>SHIFT / CTRL</b><span>throttle up / down</span></div>
+      <div><b>SPACE</b><span>hold to boost</span></div>
+      <div><b>C</b><span>chase · free · photo camera</span></div>
+      <div><b>P / ESC</b><span>pause</span></div>
+      <div><b>R</b><span>restart the run</span></div>
+      <div><b>G</b><span>toggle auto-level</span></div>
+      <div><b>V</b><span>mouse steering</span></div>
+      <div><b>M</b><span>mute audio</span></div>
+      <div><b>1 / 2 / 3</b><span>low · medium · high quality</span></div>
+    </div>
+    <p class="sheet-note">Gamepad: left stick steers, triggers adjust throttle, A boosts, B changes camera. On touch: drag the stick, hold BOOST, or enable tilt in Settings.</p>
+  </div>
+</div>
+
+<div id="settings" class="overlay hidden">
+  <div class="sheet">
+    <div class="sheet-head"><span class="panel-kicker">MAKE IT YOURS</span><button class="close-btn" data-close="settings">ESC</button></div>
+    <h2>Settings</h2>
+    <label class="setting-row"><span>Volume</span><input id="setting-volume" type="range" min="0" max="100" value="72"></label>
+    <div class="setting-row"><span>Quality</span><div class="segment" id="quality-group"><button data-quality="low">LOW</button><button data-quality="med">MED</button><button data-quality="high" class="on">HIGH</button></div></div>
+    <div class="setting-row"><span>Auto-level</span><button class="toggle on" data-setting="autoLevel">ON</button></div>
+    <div class="setting-row"><span>Invert Y</span><button class="toggle" data-setting="invertY">OFF</button></div>
+    <div class="setting-row"><span>Mouse steering</span><button class="toggle" data-setting="mouseSteer">OFF</button></div>
+    <div class="setting-row"><span>Reduce motion</span><button class="toggle" data-setting="reduceMotion">OFF</button></div>
+    <div class="setting-row"><span>Tilt steering</span><button class="toggle" data-setting="tilt">OFF</button></div>
+    <p class="sheet-note">Dynamic resolution keeps the frame rate steady on slower machines. Changes are saved on this device.</p>
+  </div>
 </div>
 
 <div id="pause" class="screen hidden">
   <div class="panel">
     <div class="panel-kicker">FLIGHT HOLD</div>
     <h2>PAUSED</h2>
-    <p>The archipelago will wait.</p>
+    <p>The archipelago will wait for you.</p>
     <div class="panel-actions">
       <button id="resume-btn" class="action primary">RESUME FLIGHT</button>
-      <button id="pause-restart-btn" class="action">RESTART SORTIE (R)</button>
+      <button id="pause-restart-btn" class="action">RESTART RUN (R)</button>
       <button id="pause-menu-btn" class="action">RETURN TO TITLE</button>
     </div>
   </div>
 </div>
 
-<div id="gameover" class="screen hidden">
+<div id="result" class="screen hidden">
   <div class="panel wide">
-    <div class="panel-kicker" id="result-kicker">SORTIE COMPLETE</div>
-    <h2 id="result-title">MISSION REPORT</h2>
+    <div class="panel-kicker" id="result-kicker">RUN COMPLETE</div>
+    <h2 id="result-title">THE LIGHT HOLDS</h2>
+    <div id="result-stars" class="stars">✦ ✦ ✦</div>
     <p id="result-line">The sea remembers every pass.</p>
     <div id="result-stats" class="stat-grid"></div>
     <div class="panel-actions">
       <button id="restart-btn" class="action primary">FLY AGAIN (R)</button>
-      <button id="menu-btn" class="action">CHANGE SORTIE</button>
+      <button id="menu-btn" class="action">CHANGE FLIGHT</button>
     </div>
+  </div>
+</div>
+
+<div id="touch-ui" class="touch-ui hidden">
+  <div id="touch-stick" class="touch-stick"><div id="touch-nub" class="touch-nub"></div></div>
+  <div class="touch-buttons">
+    <button id="touch-down" class="touch-btn">THR−</button>
+    <button id="touch-up" class="touch-btn">THR+</button>
+    <button id="touch-boost" class="touch-btn boost">BOOST</button>
+    <button id="touch-tilt" class="touch-btn">TILT</button>
   </div>
 </div>
 
@@ -74,9 +138,9 @@
   <div id="debug-fps">-- FPS</div>
   <div id="debug-info"></div>
   <div class="debug-buttons">
-    <button data-debug="spawn">SPAWN ENEMY</button>
-    <button data-debug="fortress">FORTRESS</button>
-    <button data-debug="end">END MODE</button>
+    <button data-debug="end">END RUN</button>
+    <button data-debug="dusk">DUSK</button>
+    <button data-debug="night">NIGHT</button>
   </div>
 </div>
 

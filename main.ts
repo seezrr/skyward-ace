@@ -1,4 +1,4 @@
-// Skyward Ace hand-in. The game itself lives in game/ as static files; this
+// Halcyon hand-in (repository: skyward-ace). The game itself lives in game/ as static files; this
 // Node 22 program copies those files and the captured screenshots to /output
 // and builds the dossier the bounty's judge reads. Standard library only.
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -31,4 +31,4 @@ const dossier = buildDossier(output, {
   game_path_max_bytes: 1000,
 });
 writeFileSync(join(output, 'dossier.json'), dossier);
-console.log('Skyward Ace: wrote game/, screenshots/ and dossier.json to', output);
+console.log('Halcyon: wrote game/, screenshots/ and dossier.json to', output);

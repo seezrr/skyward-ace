@@ -1,13 +1,20 @@
 import * as THREE from 'three';
 
-function panelGeometry(top, bottom, vertices, indices) {
+function wingGeometry(side, top, bottom) {
+  const v = [
+    [0, 0, -2.4], [0, 0, 5.4], [side * 15.5, 0, 1.9], [side * 15.5, 0, 4.4],
+  ];
   const positions = [];
-  for (const v of vertices) {
-    positions.push(v[0], v[1] + top, v[2]);
-  }
-  for (const v of vertices) {
-    positions.push(v[0], v[1] + bottom, v[2]);
-  }
+  for (const p of v) positions.push(p[0], p[1] + top, p[2]);
+  for (const p of v) positions.push(p[0], p[1] + bottom, p[2]);
+  const indices = [
+    0, 1, 2, 0, 2, 3,
+    4, 6, 5, 4, 7, 6,
+    0, 4, 5, 0, 5, 1,
+    1, 5, 6, 1, 6, 2,
+    2, 6, 7, 2, 7, 3,
+    3, 7, 4, 3, 4, 0,
+  ];
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setIndex(indices);
@@ -15,113 +22,88 @@ function panelGeometry(top, bottom, vertices, indices) {
   return geo;
 }
 
-function makeWing(side, material) {
-  // A swept trapezoid with a real thickness, not a placeholder box.
-  const v = [
-    [0, 0, -2], [0, 0, 6.2], [side * 16.5, 0, 2.6], [side * 16.5, 0, 5.4],
-  ];
-  const top = [0, 1, 2, 0, 2, 3];
-  const bottom = [4, 6, 5, 4, 7, 6];
-  const edges = [
-    0, 4, 5, 0, 5, 1,
-    1, 5, 6, 1, 6, 2,
-    2, 6, 7, 2, 7, 3,
-    3, 7, 4, 3, 4, 0,
-  ];
-  const geo = panelGeometry(0.42, -0.42, v, [...top, ...bottom, ...edges]);
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.castShadow = true;
-  return mesh;
-}
-
 export function buildAircraft() {
   const plane = new THREE.Group();
-  plane.name = 'Skyward Ace aircraft';
+  plane.name = 'Halcyon aircraft';
 
-  const shellMat = new THREE.MeshStandardMaterial({ color: 0xe8f2f3, metalness: 0.35, roughness: 0.42, flatShading: true });
-  const navyMat = new THREE.MeshStandardMaterial({ color: 0x163a52, metalness: 0.4, roughness: 0.46, flatShading: true });
-  const accentMat = new THREE.MeshStandardMaterial({ color: 0xff9d45, emissive: 0x5a2707, metalness: 0.3, roughness: 0.5, flatShading: true });
-  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x8fd8ec, metalness: 0.1, roughness: 0.08, transparent: true, opacity: 0.62 });
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0xffb161 });
+  const cream = new THREE.MeshStandardMaterial({ color: 0xfff2dc, roughness: 0.46, metalness: 0.16, flatShading: true });
+  const coral = new THREE.MeshStandardMaterial({ color: 0xe87866, roughness: 0.52, metalness: 0.12, flatShading: true });
+  const teal = new THREE.MeshStandardMaterial({ color: 0x2e6f72, roughness: 0.5, metalness: 0.18, flatShading: true });
+  const glass = new THREE.MeshPhysicalMaterial({ color: 0x9bd9da, roughness: 0.08, metalness: 0.05, transparent: true, opacity: 0.68 });
+  const warm = new THREE.MeshBasicMaterial({ color: 0xffc98f });
 
-  const noseGeo = new THREE.ConeGeometry(3.15, 17, 8);
+  const noseGeo = new THREE.ConeGeometry(2.9, 14, 8);
   noseGeo.rotateX(-Math.PI / 2);
-  const nose = new THREE.Mesh(noseGeo, shellMat);
-  nose.position.z = -4.5;
+  const nose = new THREE.Mesh(noseGeo, cream);
+  nose.position.z = -5.2;
   nose.castShadow = true;
   plane.add(nose);
 
-  const bodyGeo = new THREE.CylinderGeometry(3.0, 2.3, 13, 8);
+  const bodyGeo = new THREE.CylinderGeometry(2.7, 2.15, 13, 8);
   bodyGeo.rotateX(-Math.PI / 2);
-  const body = new THREE.Mesh(bodyGeo, shellMat);
-  body.position.z = 5.5;
+  const body = new THREE.Mesh(bodyGeo, cream);
+  body.position.z = 4.4;
   body.castShadow = true;
   plane.add(body);
 
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 16), accentMat);
-  stripe.position.set(0, 2.85, 1.5);
-  plane.add(stripe);
-
-  plane.add(makeWing(1, navyMat));
-  plane.add(makeWing(-1, navyMat));
-
-  const tailGeo = new THREE.BoxGeometry(11, 0.5, 3.6);
   for (const side of [-1, 1]) {
-    const tail = new THREE.Mesh(tailGeo, navyMat);
-    tail.position.set(side * 3.4, 0.55, 9.4);
-    tail.rotation.y = side * 0.18;
-    tail.castShadow = true;
+    const wing = new THREE.Mesh(wingGeometry(side, 0.34, -0.34), coral);
+    wing.castShadow = true;
+    plane.add(wing);
+    const tip = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 0.5, 2.7),
+      cream,
+    );
+    tip.position.set(side * 14.8, 0, 3.1);
+    plane.add(tip);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(9.5, 0.44, 3.1), teal);
+    tail.position.set(side * 3.1, 0.55, 9.1);
+    tail.rotation.y = side * 0.16;
     plane.add(tail);
   }
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.55, 5.8, 5.2), accentMat);
-  fin.position.set(0, 3.2, 9.2);
+
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.4, 4.8), coral);
+  fin.position.set(0, 3.0, 9.0);
   fin.castShadow = true;
   plane.add(fin);
 
-  const canopyGeo = new THREE.SphereGeometry(2.55, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-  const canopy = new THREE.Mesh(canopyGeo, glassMat);
-  canopy.scale.set(1, 0.82, 2.25);
-  canopy.position.set(0, 2.3, -1.3);
+  const canopyGeo = new THREE.SphereGeometry(2.4, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+  const canopy = new THREE.Mesh(canopyGeo, glass);
+  canopy.scale.set(1, 0.78, 2.1);
+  canopy.position.set(0, 2.15, -1.8);
   plane.add(canopy);
 
-  const nozzles = [];
-  for (const side of [-1, 1]) {
-    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 3.2, 8), navyMat);
-    nozzle.rotation.x = Math.PI / 2;
-    nozzle.position.set(side * 1.65, -0.2, 12.2);
-    plane.add(nozzle);
-    const fire = new THREE.Mesh(new THREE.CircleGeometry(1.15, 10), glowMat);
-    fire.position.set(side * 1.65, -0.2, 13.85);
-    plane.add(fire);
-    nozzles.push(fire);
-  }
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.26, 14.5), teal);
+  stripe.position.set(0, 2.55, 2.2);
+  plane.add(stripe);
 
-  const navGeo = new THREE.SphereGeometry(0.62, 6, 5);
-  const redLight = new THREE.Mesh(navGeo, new THREE.MeshBasicMaterial({ color: 0xff4e50 }));
-  redLight.position.set(-16.2, 0.4, 3.8);
-  const greenLight = new THREE.Mesh(navGeo, new THREE.MeshBasicMaterial({ color: 0x5bff9b }));
-  greenLight.position.set(16.2, 0.4, 3.8);
-  plane.add(redLight, greenLight);
+  const spinner = new THREE.Mesh(new THREE.ConeGeometry(1.3, 3.4, 8), teal);
+  spinner.rotation.x = -Math.PI / 2;
+  spinner.position.z = -12.7;
+  plane.add(spinner);
+  const prop = new THREE.Mesh(
+    new THREE.PlaneGeometry(11.2, 1.05),
+    new THREE.MeshBasicMaterial({ color: 0xfff0d2, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  prop.position.z = -12.9;
+  plane.add(prop);
+
+  const navGeo = new THREE.SphereGeometry(0.55, 6, 5);
+  const leftLight = new THREE.Mesh(navGeo, new THREE.MeshBasicMaterial({ color: 0xff8f7c }));
+  leftLight.position.set(-15.2, 0.35, 3.1);
+  const rightLight = new THREE.Mesh(navGeo, new THREE.MeshBasicMaterial({ color: 0x9ff0d0 }));
+  rightLight.position.set(15.2, 0.35, 3.1);
+  plane.add(leftLight, rightLight);
 
   const tipL = new THREE.Object3D();
-  tipL.position.set(-16.2, 0.2, 4.0);
+  tipL.position.set(-14.8, 0.1, 3.1);
   const tipR = new THREE.Object3D();
-  tipR.position.set(16.2, 0.2, 4.0);
+  tipR.position.set(14.8, 0.1, 3.1);
   plane.add(tipL, tipR);
 
-  const cockpitFrame = new THREE.Group();
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x142836, roughness: 0.72, metalness: 0.3 });
-  const addBar = (w, h, d, x, y, z) => {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
-    bar.position.set(x, y, z);
-    cockpitFrame.add(bar);
-  };
-  addBar(0.55, 5.6, 0.7, -4.3, 2.3, -5.2);
-  addBar(0.55, 5.6, 0.7, 4.3, 2.3, -5.2);
-  addBar(9.4, 0.55, 0.7, 0, 5.0, -5.2);
-  addBar(10.5, 2.4, 3.4, 0, -0.9, -4.2);
-  cockpitFrame.visible = false;
-  plane.add(cockpitFrame);
+  const tailGlow = new THREE.Mesh(new THREE.CircleGeometry(1.15, 12), warm);
+  tailGlow.position.set(0, -0.1, 11.3);
+  plane.add(tailGlow);
 
-  return { plane, wingTips: [tipL, tipR], nozzles, cockpitFrame };
+  return { plane, wingTips: [tipL, tipR], prop };
 }
