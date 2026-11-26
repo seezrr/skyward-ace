@@ -2,6 +2,13 @@ import { clamp, damp } from './util.js';
 
 const PREVENT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab']);
 
+// Analog sticks get a gentle curve: small deflections make fine corrections,
+// full deflections still reach the stops. Keyboard keys remain exact 0/1.
+function curve(value) {
+  const v = clamp(value, -1, 1);
+  return Math.sign(v) * Math.pow(Math.abs(v), 1.25);
+}
+
 // Keyboard, mouse steering, gamepad and touch all feed the same small verb set.
 export class InputController {
   constructor(target = window) {
@@ -169,12 +176,12 @@ export class InputController {
     // in both coordinate systems.
     let value = (this.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.isDown('KeyS', 'ArrowDown') ? 1 : 0);
     if (this.gamepad) {
-      value -= clamp(this.gamepad.axes[1] || 0, -1, 1);
-      if (this.tiltEnabled) value += this.tiltY;
+      value -= curve(this.gamepad.axes[1] || 0);
+      if (this.tiltEnabled) value += curve(this.tiltY);
     } else if (this.tiltEnabled) {
-      value += this.tiltY;
+      value += curve(this.tiltY);
     }
-    value -= this.smoothMouseY;
+    value -= curve(this.smoothMouseY);
     return clamp(value, -1, 1) * (this.invertY ? -1 : 1);
   }
 
@@ -183,12 +190,12 @@ export class InputController {
     // therefore subtract, matching A / ArrowLeft and D / ArrowRight.
     let value = (this.isDown('KeyA', 'ArrowLeft') ? 1 : 0) - (this.isDown('KeyD', 'ArrowRight') ? 1 : 0);
     if (this.gamepad) {
-      value -= clamp(this.gamepad.axes[0] || 0, -1, 1);
-      if (this.tiltEnabled) value -= this.tiltX;
+      value -= curve(this.gamepad.axes[0] || 0);
+      if (this.tiltEnabled) value -= curve(this.tiltX);
     } else if (this.tiltEnabled) {
-      value -= this.tiltX;
+      value -= curve(this.tiltX);
     }
-    value -= this.smoothMouseX + this.touchX;
+    value -= curve(this.smoothMouseX) + curve(this.touchX);
     return clamp(value, -1, 1);
   }
 

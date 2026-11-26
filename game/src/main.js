@@ -108,7 +108,6 @@ function boot(glContext) {
   });
 
   const chaseBase = new THREE.Vector3();
-  const chaseTarget = new THREE.Vector3();
   const cameraDesired = new THREE.Vector3();
   const cameraLook = new THREE.Vector3();
   const cameraUp = new THREE.Vector3();
@@ -395,7 +394,9 @@ function boot(glContext) {
     flight.getRight(right);
     const speed = flight.speed;
     const boostKick = flight.boosting ? 7 : 0;
-    const rollBlend = settings.reduceMotion ? 0.08 : 0.34;
+    // External cameras are easier to read with a mostly level horizon; a
+    // little aircraft roll keeps the banking feel without tipping the world.
+    const rollBlend = settings.reduceMotion ? 0.04 : 0.14;
 
     // Every view is a spring arm attached to the aircraft: the camera may
     // drift, but it never orbits away and leaves the plane off-screen.
@@ -420,10 +421,18 @@ function boot(glContext) {
       cameraUp.copy(worldUp);
       camera.fov = damp(camera.fov, 50, 3, dt);
     } else {
-      chaseBase.copy(plane.position).addScaledVector(forward, -35).addScaledVector(up, 8.6);
-      moveCamera(chaseBase, 6.4, dt);
-      chaseTarget.copy(plane.position).addScaledVector(forward, 46).addScaledVector(up, 2.6);
-      cameraLook.copy(chaseTarget);
+      // Chase camera leads with a blend of nose and actual velocity. When the
+      // plane is carving a turn the camera follows the path, not just the
+      // model, so the aircraft stays framed and the next gate stays readable.
+      const velocityDir = scratch.v4.copy(flight.velocity);
+      if (velocityDir.lengthSq() > 1) velocityDir.normalize();
+      else velocityDir.copy(forward);
+      const lookDir = scratch.v5.copy(forward).lerp(velocityDir, 0.38).normalize();
+      chaseBase.copy(plane.position).addScaledVector(lookDir, -36).addScaledVector(worldUp, 9).addScaledVector(up, 1.6);
+      moveCamera(chaseBase, 6.8, dt);
+      const desiredLook = scratch.v6.copy(plane.position).addScaledVector(lookDir, 54).addScaledVector(worldUp, 3);
+      if (cameraSnap) cameraLook.copy(desiredLook);
+      else cameraLook.lerp(desiredLook, 1 - Math.exp(-9 * dt));
       cameraUp.copy(worldUp).lerp(up, rollBlend);
       camera.fov = damp(camera.fov, clamp(61 + (speed - 82) * 0.12, 59, 82) + boostKick, 3.6, dt);
     }
@@ -654,6 +663,19 @@ function boot(glContext) {
           inView: projected.z > -1 && projected.z < 1 && Math.abs(projected.x) < 0.95 && Math.abs(projected.y) < 0.95,
           distance: Number(camera.position.distanceTo(plane.position).toFixed(1)),
         },
+        ring: director.hudTarget.active ? {
+          index: director.ringIndex,
+          distance: Number(director.hudTarget.distance.toFixed(1)),
+          axial: Number(director.hudTarget.axial.toFixed(1)),
+          lateral: Number(director.hudTarget.lateral.toFixed(1)),
+          alignment: Number(director.hudTarget.alignment.toFixed(3)),
+          radius: Number(director.hudTarget.radius.toFixed(1)),
+        } : null,
+        course: world.rings.map((ring) => ({
+          position: ring.position.toArray().map((n) => Number(n.toFixed(1))),
+          normal: ring.normal.toArray().map((n) => Number(n.toFixed(3))),
+          radius: Number(ring.radius.toFixed(1)),
+        })),
         settings: { ...settings },
         shotPreset,
       };
@@ -674,7 +696,15 @@ function boot(glContext) {
     terrainAt(x, z) { return Number(world.collisionHeightAt(x, z).toFixed(2)); },
     debugPlace(x, y, z, vx = 0, vy = 0, vz = 0) {
       plane.position.set(x, y, z);
-      plane.quaternion.identity();
+      const direction = new THREE.Vector3(vx, vy, vz);
+      if (direction.lengthSq() > 0.0001) {
+        direction.normalize();
+        plane.quaternion.setFromRotationMatrix(
+          new THREE.Matrix4().lookAt(new THREE.Vector3(), direction, worldUp),
+        );
+      } else {
+        plane.quaternion.identity();
+      }
       flight.velocity.set(vx, vy, vz);
       flight.stalled = false;
       flight.stallWarning = false;

@@ -119,7 +119,7 @@ export class FlightModel {
       else pitchInput = clamp((Math.sign(pitchInput) * 0.78 - pitch) * 1.6, -0.55, 0.55);
     }
     if (this.stalled) pitchInput = -0.55;
-    this.pitchRate = damp(this.pitchRate, pitchInput * 1.5 * authority, 7, dt);
+    this.pitchRate = damp(this.pitchRate, pitchInput * 1.9 * authority, 9, dt);
     this.object.rotateX(this.pitchRate * dt);
     this.object.quaternion.normalize();
 
@@ -131,10 +131,12 @@ export class FlightModel {
     // rudder adds trim on top of that instead of being the only way to turn.
     const bank = this.bankRadians();
     const coordinated = GRAVITY * Math.tan(clamp(bank, -1.35, 1.35)) / Math.max(speed, 42);
-    // The gain keeps an 88 m/s plane responsive in an arcade game while the
-    // bank-angle relationship still produces a real, speed-dependent turn.
-    const targetYaw = clamp(coordinated * 1.5 + input.yaw * 0.7 * authority, -1.9, 1.9);
-    this.yawRate = damp(this.yawRate, targetYaw, 8, dt);
+    // The bank-angle relationship still produces a real, speed-dependent
+    // turn, but a little extra gain at high speed keeps fast passes from
+    // feeling like the plane refuses to follow the stick.
+    const speedGain = 1.5 + clamp((speed - 90) / 140, 0, 0.45);
+    const targetYaw = clamp(coordinated * speedGain + input.yaw * 0.8 * authority, -2.1, 2.1);
+    this.yawRate = damp(this.yawRate, targetYaw, 10, dt);
     this.turnQuat.setFromAxisAngle(WORLD_UP, this.yawRate * dt);
     this.object.quaternion.premultiply(this.turnQuat).normalize();
 
@@ -167,8 +169,10 @@ export class FlightModel {
 
     // Keep the nose and the velocity aligned; this is what makes a bank carve
     // through the air instead of spinning the model in place.
-    accel.addScaledVector(right, -sideSpeed * 2.6);
-    accel.addScaledVector(up, -bodyUpSpeed * 0.38);
+    // Stronger path damping makes the aircraft follow its nose through a gate
+    // instead of sliding sideways after the model has already turned.
+    accel.addScaledVector(right, -sideSpeed * 3.2);
+    accel.addScaledVector(up, -bodyUpSpeed * 0.5);
 
     this.velocity.addScaledVector(accel, dt);
     const newSpeed = this.velocity.length();

@@ -17,6 +17,15 @@ export class GameDirector {
     this.crashes = 0;
     this.stormClock = 0;
     this.stats = {};
+    this.hudTarget = {
+      active: false,
+      position: new THREE.Vector3(),
+      radius: 30,
+      distance: 0,
+      axial: 0,
+      lateral: 0,
+      alignment: 0,
+    };
     this.seed = dailySeed();
     this.best = 0;
     this.timer = 0;
@@ -157,7 +166,15 @@ export class GameDirector {
     const d0 = scratch.v1.subVectors(before, ring.position).dot(ring.normal);
     const d1 = scratch.v2.subVectors(current, ring.position).dot(ring.normal);
     if (d0 >= 0 || d1 < 0) return;
-    const lateral = scratch.v3.copy(current).addScaledVector(ring.normal, -d1).distanceTo(ring.position);
+    // Gates only count when the aircraft is travelling through them, and the
+    // lateral offset is measured at the exact segment/plane crossing instead
+    // of at the frame after it. Fast passes now score where they visually
+    // crossed, not where the plane happened to be one frame later.
+    const forward = scratch.v4.copy(flight.velocity).normalize();
+    if (forward.dot(ring.normal) < 0.15) return;
+    const t = d0 / (d0 - d1);
+    const hit = scratch.v3.copy(before).lerp(current, t);
+    const lateral = hit.distanceTo(ring.position);
     if (lateral < ring.radius) {
       ring.passed = true;
       this.combo = Math.min(9, this.combo + 1);
@@ -261,6 +278,26 @@ export class GameDirector {
     const sub = this.mode === 'free'
       ? 'LANTERNS ' + this.lanterns + ' · BEST ' + Math.round(this.best)
       : 'RINGS ' + this.ringIndex + '/' + this.ctx.world.rings.length + ' · BEST ' + Math.round(this.best);
+
+    // The guidance target is also the debug surface used by the playtests:
+    // one description of the active gate shared by HUD, tests and scoring.
+    const target = this.hudTarget;
+    const ring = this.mode === 'free' ? null : this.ctx.world.rings[this.ringIndex];
+    if (!ring || !this.active) {
+      target.active = false;
+    } else {
+      const { flight } = this.ctx;
+      target.active = true;
+      target.position.copy(ring.position);
+      target.radius = ring.radius;
+      const rel = scratch.v1.subVectors(flight.object.position, ring.position);
+      target.axial = rel.dot(ring.normal);
+      scratch.v2.copy(rel).addScaledVector(ring.normal, -target.axial);
+      target.lateral = scratch.v2.length();
+      target.distance = rel.length();
+      target.alignment = scratch.v3.copy(flight.velocity).normalize().dot(ring.normal);
+    }
+
     return {
       modeLabel: label,
       modeValue: value,
@@ -272,6 +309,7 @@ export class GameDirector {
       seed: this.seed,
       timer: this.timer,
       best: this.best,
+      ringTarget: target,
     };
   }
 }

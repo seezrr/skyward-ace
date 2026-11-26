@@ -84,6 +84,7 @@ export class HUD {
     this.drawCompass(ctx, flight, w, ink, accent, night);
     this.drawLowerPanels(ctx, flight, state, w, h, panel, ink, accent, soft, night);
     this.drawCombo(ctx, state, w, h, accent, ink);
+    this.drawGate(ctx, state, camera, w, h, ink, accent, night);
     if (state.storm) this.drawWarning(ctx, w, h, 'STORM CELL · ROUTE AROUND', '255,122,115');
     if (state.updraft > 0) this.drawWarning(ctx, w, h - 62, 'UPDRAFT · RIDING THE RISE', '168,240,214', 0.62);
     this.drawPopups(ctx, camera, dt);
@@ -228,6 +229,89 @@ export class HUD {
     ctx.fillStyle = ink + '0.6)';
     ctx.fillText('CHAIN', cx, cy + 19);
     ctx.restore();
+  }
+
+  // One small flight-director cue: where the plane is actually going, and
+  // where the next gate is. It turns "line up with the ring" from a guess into
+  // a readable two-marker relationship without flying the plane for the user.
+  drawGate(ctx, state, camera, w, h, ink, accent, night) {
+    const target = state.ringTarget;
+    const flight = state.flight;
+    if (!target || !target.active || !flight) return;
+    const marker = scratch.v3;
+    const world = scratch.v4;
+    const velocity = scratch.v5;
+
+    velocity.copy(flight.velocity);
+    if (velocity.lengthSq() > 1) {
+      velocity.normalize();
+      world.copy(flight.object.position).addScaledVector(velocity, 110);
+      if (this.project(world, camera, marker)) {
+        ctx.save();
+        ctx.strokeStyle = night ? 'rgba(143,228,221,0.55)' : 'rgba(255,218,178,0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(marker.x, marker.y, 6, 0, Math.PI * 2);
+        ctx.moveTo(marker.x - 12, marker.y);
+        ctx.lineTo(marker.x - 8, marker.y);
+        ctx.moveTo(marker.x + 8, marker.y);
+        ctx.lineTo(marker.x + 12, marker.y);
+        ctx.moveTo(marker.x, marker.y - 12);
+        ctx.lineTo(marker.x, marker.y - 8);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    const point = scratch.v6;
+    const aligned = target.lateral <= target.radius && target.alignment > 0.35;
+    const color = aligned ? accent : night ? '#8fe4dd' : '#ffd6a1';
+    const inView = this.project(target.position, camera, point);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1.6;
+    if (inView) {
+      const r = clamp(1500 / Math.max(target.distance, 40), 13, 58);
+      const arm = r * 0.42;
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          const x = point.x + sx * r;
+          const y = point.y + sy * r;
+          ctx.beginPath();
+          ctx.moveTo(x - sx * arm, y);
+          ctx.lineTo(x, y);
+          ctx.lineTo(x, y - sy * arm);
+          ctx.stroke();
+        }
+      }
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = '600 10px ' + FONT;
+      ctx.textAlign = 'center';
+      ctx.fillText(Math.round(target.distance) + 'm', point.x, point.y + r + 15);
+    } else {
+      const ndc = scratch.v1.copy(target.position).project(camera);
+      const angle = Math.atan2(ndc.y, ndc.x);
+      const radius = Math.min(w, h) * 0.38;
+      const x = w / 2 + Math.cos(angle) * radius;
+      const y = h / 2 - Math.sin(angle) * radius;
+      ctx.translate(x, y);
+      ctx.rotate(-angle);
+      ctx.beginPath();
+      ctx.moveTo(12, 0);
+      ctx.lineTo(-8, 7);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(-8, -7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.rotate(angle);
+      ctx.font = '600 10px ' + FONT;
+      ctx.fillText(Math.round(target.distance) + 'm', 0, 24);
+    }
+    ctx.restore();
+    void ink;
   }
 
   drawWarning(ctx, w, h, text, rgb, alpha = 1) {

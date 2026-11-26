@@ -278,12 +278,23 @@ export class World {
     const activeMat = new THREE.MeshStandardMaterial({
       color: 0xffc082, emissive: 0xb25b25, emissiveIntensity: 1.25, roughness: 0.34, metalness: 0.12,
     });
+    // Gates are a little wider than the raw torus: a forgiving capture radius
+    // reads as "the ring felt good" instead of "the plane clipped the edge".
+    const ringRadius = 30;
+    const baseScale = ringRadius / 26;
+    const start = [0, 128, 330];
     for (let i = 0; i < RING_COURSE.length; i++) {
       const [x, zy, z] = RING_COURSE[i];
       const pos = new THREE.Vector3(x, Math.max(zy, this.collisionHeightAt(x, z) + 44), z);
-      const next = RING_COURSE[(i + 1) % RING_COURSE.length];
-      const nextPos = new THREE.Vector3(next[0], Math.max(next[1], this.collisionHeightAt(next[0], next[2]) + 44), next[2]);
-      const normal = new THREE.Vector3().subVectors(nextPos, pos).normalize();
+      const previous = i === 0 ? start : RING_COURSE[i - 1];
+      const prevPos = new THREE.Vector3(
+        previous[0],
+        Math.max(previous[1], this.collisionHeightAt(previous[0], previous[2]) + 44),
+        previous[2],
+      );
+      // A gate must face the direction the player flies *into* it. Using the
+      // outgoing leg skewed every corner and made clean entries feel random.
+      const normal = new THREE.Vector3().subVectors(pos, prevPos).normalize();
       const group = new THREE.Group();
       group.position.copy(pos);
       group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
@@ -293,6 +304,16 @@ export class World {
         color: 0xffc082, transparent: true, opacity: 0.13, depthWrite: false, blending: THREE.AdditiveBlending,
       }));
       group.add(glow);
+      // A faint lead-in line shows the approach axis before the gate fills the
+      // screen, so players can line up early instead of guessing at the turn.
+      const lead = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, -150),
+          new THREE.Vector3(0, 0, -26),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0xffd39a, transparent: true, opacity: 0.1, depthWrite: false }),
+      );
+      group.add(lead);
       const markerMat = new THREE.MeshBasicMaterial({ color: 0xfff0c9, transparent: true, opacity: 0.9 });
       for (const side of [-1, 1]) {
         const marker = new THREE.Mesh(this.shared.markerGeo, markerMat);
@@ -300,7 +321,10 @@ export class World {
         group.add(marker);
       }
       this.scene.add(group);
-      this.rings.push({ group, position: pos, normal, radius: 26, index: i, material: mat, glow, passed: false, nearMissed: false });
+      this.rings.push({
+        group, position: pos, normal, radius: ringRadius, baseScale,
+        index: i, material: mat, glow, lead, passed: false, nearMissed: false,
+      });
     }
 
     const stormSpots = [[-120, 130, -350], [250, 150, -620], [-330, 140, -150]];
@@ -727,6 +751,8 @@ export class World {
       ring.material.emissiveIntensity = active ? 1.5 : 0.55;
       ring.glow.material.color.setHex(color);
       ring.glow.material.opacity = active ? 0.26 : 0.08;
+      ring.lead.material.color.setHex(color);
+      ring.lead.material.opacity = active ? 0.3 : 0.05;
     }
   }
 
@@ -802,7 +828,7 @@ export class World {
     }
     for (const ring of this.rings) {
       const pulse = 1 + Math.sin(this.time * 2.2 + ring.index) * 0.016;
-      ring.group.scale.setScalar(pulse);
+      ring.group.scale.setScalar(pulse * ring.baseScale);
       ring.group.children[0].rotation.z += dt * 0.16;
     }
     for (const storm of this.storms) {
