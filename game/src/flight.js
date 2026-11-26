@@ -4,15 +4,22 @@ import { clamp, damp, scratch } from './util.js';
 const LOCAL_FORWARD = new THREE.Vector3(0, 0, -1);
 const LOCAL_UP = new THREE.Vector3(0, 1, 0);
 const LOCAL_RIGHT = new THREE.Vector3(1, 0, 0);
-const GRAVITY = 9.8;
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const GRAVITY = 9.81;
+const MAX_BANK = 1.15;
+const MAX_LIFT_G = 3.6;
 
-// Arcade-sim: throttle is a setting, boost is a burst, and lift follows
-// airspeed with a soft warning before a stall. Auto-level keeps it welcoming.
+// Flight model: A/D bank the wing and turn the aircraft together, W/S pitch,
+// Q/E are rudder trim. Lift grows in a bank to hold altitude, sideslip is
+// damped, and low speed or a high angle of attack produces a real stall.
+// Steering assist (auto-level) clamps the bank and levels the wings; turning
+// it off gives full aerobatic roll control for barrel rolls.
 export class FlightModel {
   constructor(object) {
     this.object = object;
     this.velocity = new THREE.Vector3();
-    this.throttle = 0.58;
+    this.turnQuat = new THREE.Quaternion();
+    this.throttle = 0.62;
     this.boosting = false;
     this.braking = false;
     this.stallWarning = false;
@@ -27,7 +34,7 @@ export class FlightModel {
     this.invertedTime = 0;
     this.skimTime = 0;
     this.distance = 0;
-    this.lift = 0;
+    this.lift = GRAVITY;
     this.reset(new THREE.Vector3(0, 128, 330), new THREE.Quaternion(), 88);
   }
 
@@ -35,8 +42,9 @@ export class FlightModel {
     this.object.position.copy(position);
     this.object.quaternion.copy(quaternion);
     this.getForward(this.velocity).multiplyScalar(speed);
-    this.throttle = 0.58;
+    this.throttle = 0.62;
     this.boosting = false;
+    this.braking = false;
     this.stallWarning = false;
     this.stalled = false;
     this.gForce = 1;
@@ -85,51 +93,82 @@ export class FlightModel {
     if (this.braking) this.throttle = damp(this.throttle, 0.12, 6, dt);
 
     const speed = this.speed;
-    const authority = clamp(speed / 82, 0.32, 1.3) * (this.stalled ? 0.55 : 1);
+    const authority = clamp(speed / 84, 0.34, 1.25) * (this.stalled ? 0.55 : 1);
+    const rollInput = input.roll;
     let pitchInput = input.pitch;
-    let rollInput = input.roll;
-    const yawInput = input.yaw;
 
-    // Assisted auto-level only steps in when the stick is quiet.
-    if (this.autoLevel && Math.abs(rollInput) < 0.08) {
-      const bank = this.bankDegrees() * Math.PI / 180;
-      rollInput = clamp(-bank * 0.42, -0.55, 0.55);
+    // Assisted steering: the stick commands a bank angle, then the wings level
+    // when released. Unassisted: the stick commands a roll rate for aerobatics.
+    if (this.autoLevel) {
+      const bank = this.bankRadians();
+      const stick = Math.abs(rollInput) < 0.08 ? clamp(-bank * 0.85, -0.5, 0.5) : rollInput;
+      const targetBank = stick * MAX_BANK * authority;
+      const bankError = targetBank - bank;
+      this.rollRate = damp(this.rollRate, clamp(bankError * 6.2, -5, 5), 16, dt);
+    } else {
+      this.rollRate = damp(this.rollRate, rollInput * 2.8 * authority, 10, dt);
     }
-    if (this.autoLevel && Math.abs(pitchInput) < 0.08) {
-      const pitch = this.pitchDegrees() * Math.PI / 180;
-      pitchInput = clamp(-pitch * 0.22, -0.3, 0.3);
-    }
-
-    const targetPitch = pitchInput * 1.02 * authority;
-    const targetRoll = rollInput * 2.2 * authority;
-    const targetYaw = yawInput * 0.58 * authority;
-    this.pitchRate = damp(this.pitchRate, targetPitch, 7.2, dt);
-    this.rollRate = damp(this.rollRate, targetRoll, 8.1, dt);
-    this.yawRate = damp(this.yawRate, targetYaw, 6.2, dt);
-
-    this.stallWarning = speed < 48 && this.object.position.y > 10;
-    if (this.stalled) this.pitchRate = damp(this.pitchRate, -0.62, 2.8, dt);
-
-    this.object.rotateX(this.pitchRate * dt);
-    this.object.rotateY(this.yawRate * dt);
     this.object.rotateZ(this.rollRate * dt);
+
+    if (this.autoLevel) {
+      // Assisted pitch settles at a readable 45-degree climb/dive instead of
+      // looping the aircraft when the key is held. Aerobatic mode keeps the
+      // full stick authority for loops.
+      const pitch = this.pitchRadians();
+      if (Math.abs(pitchInput) < 0.08) pitchInput = clamp(-pitch * 0.9, -0.45, 0.45);
+      else pitchInput = clamp((Math.sign(pitchInput) * 0.78 - pitch) * 1.6, -0.55, 0.55);
+    }
+    if (this.stalled) pitchInput = -0.55;
+    this.pitchRate = damp(this.pitchRate, pitchInput * 1.5 * authority, 7, dt);
+    this.object.rotateX(this.pitchRate * dt);
     this.object.quaternion.normalize();
 
     this.getForward(forward);
     this.getUp(up);
     this.getRight(right);
 
+    // A banked wing makes the aircraft turn around the vertical axis. The
+    // rudder adds trim on top of that instead of being the only way to turn.
+    const bank = this.bankRadians();
+    const coordinated = GRAVITY * Math.tan(clamp(bank, -1.35, 1.35)) / Math.max(speed, 42);
+    // The gain keeps an 88 m/s plane responsive in an arcade game while the
+    // bank-angle relationship still produces a real, speed-dependent turn.
+    const targetYaw = clamp(coordinated * 1.5 + input.yaw * 0.7 * authority, -1.9, 1.9);
+    this.yawRate = damp(this.yawRate, targetYaw, 8, dt);
+    this.turnQuat.setFromAxisAngle(WORLD_UP, this.yawRate * dt);
+    this.object.quaternion.premultiply(this.turnQuat).normalize();
+
+    this.getForward(forward);
+    this.getUp(up);
+    this.getRight(right);
+
+    const forwardSpeed = this.velocity.dot(forward);
+    const sideSpeed = this.velocity.dot(right);
+    const bodyUpSpeed = this.velocity.dot(up);
+    const angleOfAttack = clamp(-Math.atan2(bodyUpSpeed, Math.max(Math.abs(forwardSpeed), 10)), -0.6, 0.6);
+    this.stallWarning = speed < 52 || (Math.abs(angleOfAttack) > 0.42 && speed < 70);
+
     accel.set(0, -GRAVITY, 0);
+
+    // In a level turn, lift must rise as 1 / cos(bank) to hold altitude. Its
+    // horizontal component is what actually curves the flight path.
+    const speedLift = clamp(Math.pow(speed / 86, 2), 0, 1.55);
+    const bankLift = 1 / Math.max(0.45, Math.abs(up.y));
+    const aoaLift = 1 + clamp(angleOfAttack * 0.55, -0.25, 0.35);
+    const stallFactor = this.stalled ? 0.32 : 1;
+    this.lift = GRAVITY * clamp(speedLift * bankLift, 0, MAX_LIFT_G) * aoaLift * stallFactor;
+    accel.addScaledVector(up, this.lift);
+
     const thrust = 12.5 * this.throttle * (this.boosting ? 1.9 : 1) * (this.braking ? 0.22 : 1);
     accel.addScaledVector(forward, thrust);
 
-    const liftRatio = clamp(speed / 86, 0, 1.5);
-    this.lift = GRAVITY * liftRatio * liftRatio * (this.stalled ? 0.34 : 1);
-    accel.addScaledVector(up, this.lift);
-
-    const drag = 0.010 + speed * 0.00068 + (this.braking ? 0.078 : 0);
+    const drag = 0.011 + speed * 0.0007 + (this.braking ? 0.078 : 0);
     accel.addScaledVector(this.velocity, -drag);
-    accel.addScaledVector(right, -this.velocity.dot(right) * 1.3);
+
+    // Keep the nose and the velocity aligned; this is what makes a bank carve
+    // through the air instead of spinning the model in place.
+    accel.addScaledVector(right, -sideSpeed * 2.6);
+    accel.addScaledVector(up, -bodyUpSpeed * 0.38);
 
     this.velocity.addScaledVector(accel, dt);
     const newSpeed = this.velocity.length();
@@ -139,12 +178,17 @@ export class FlightModel {
 
     this.object.position.addScaledVector(this.velocity, dt);
     this.distance += this.speed * dt;
-    this.stalled = this.speed < 29 && this.object.position.y > 8;
+    // A high angle of attack alone is not a stall at cruising speed; the wing
+    // still flies. Stalling needs low airspeed, otherwise every climb would be
+    // pulled over by the recovery logic.
+    this.stalled = (this.speed < 30 || (Math.abs(angleOfAttack) > 0.72 && this.speed < 62))
+      && this.object.position.y > 8;
 
-    const turnAccel = Math.abs(this.rollRate * this.speed) * 0.34 + Math.abs(this.pitchRate * this.speed) * 0.5;
-    this.gForce = damp(this.gForce, clamp(1 + turnAccel / GRAVITY, 1, 7.5), 5, dt);
+    const turnAccel = Math.abs(coordinated) * this.speed;
+    const pitchAccel = Math.abs(this.pitchRate) * this.speed * 0.5;
+    this.gForce = damp(this.gForce, clamp(1 + (turnAccel + pitchAccel) / GRAVITY, 1, 7.5), 5, dt);
 
-    this.rollAccum += this.rollRate * dt;
+    this.rollAccum += this.rollRate * dt * (this.autoLevel ? 0.18 : 1);
     if (Math.abs(this.rollAccum) > Math.PI * 2) {
       this.barrelRolls++;
       this.rollAccum -= Math.sign(this.rollAccum) * Math.PI * 2;
@@ -154,24 +198,32 @@ export class FlightModel {
   }
 
   headingDegrees() {
-    const forward = scratch.v5;
+    const forward = scratch.v6;
     this.getForward(forward);
     let heading = Math.atan2(forward.x, -forward.z) * 180 / Math.PI;
     if (heading < 0) heading += 360;
     return heading;
   }
 
-  pitchDegrees() {
-    const forward = scratch.v5;
+  pitchRadians() {
+    const forward = scratch.v6;
     this.getForward(forward);
-    return Math.asin(clamp(forward.y, -1, 1)) * 180 / Math.PI;
+    return Math.asin(clamp(forward.y, -1, 1));
+  }
+
+  pitchDegrees() {
+    return this.pitchRadians() * 180 / Math.PI;
+  }
+
+  bankRadians() {
+    const up = scratch.v6;
+    const right = scratch.v7;
+    this.getUp(up);
+    this.getRight(right);
+    return Math.atan2(right.y, up.y);
   }
 
   bankDegrees() {
-    const up = scratch.v5;
-    const right = scratch.v1;
-    this.getUp(up);
-    this.getRight(right);
-    return Math.atan2(right.y, up.y) * 180 / Math.PI;
+    return this.bankRadians() * 180 / Math.PI;
   }
 }

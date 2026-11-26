@@ -13,6 +13,8 @@ export class GameDirector {
     this.safePosition = new THREE.Vector3();
     this.safeQuaternion = new THREE.Quaternion();
     this.safeClock = 0;
+    this.recoveryGrace = 0;
+    this.crashes = 0;
     this.stormClock = 0;
     this.stats = {};
     this.seed = dailySeed();
@@ -35,6 +37,8 @@ export class GameDirector {
     this.lanterns = 0;
     this.stormClock = 0;
     this.safeClock = 0;
+    this.recoveryGrace = 0;
+    this.crashes = 0;
     this.lastBarrels = 0;
     this.lastSkim = 0;
     this.updraft = 0;
@@ -65,10 +69,10 @@ export class GameDirector {
     const current = flight.object.position;
     const before = this.prevPosition;
 
-    this.updateCrash();
+    const recovered = this.updateCrash(dt);
     this.updateStorms(dt);
     if (this.mode === 'free') this.updateFree(dt);
-    else this.updateRing(before, current);
+    else if (!recovered) this.updateRing(before, current);
 
     if (this.mode !== 'free') {
       this.timer = Math.max(0, this.timer - dt);
@@ -84,28 +88,48 @@ export class GameDirector {
     this.prevPosition.copy(current);
   }
 
-  updateCrash() {
+  updateCrash(dt) {
     const { flight, world, fx, audio, hud } = this.ctx;
     const pos = flight.object.position;
-    this.safeClock += 0;
-    const ground = world.heightAt(pos.x, pos.z);
-    const crashed = pos.y < Math.max(3, ground + 3);
-    if (!crashed) {
-      if (pos.y > ground + 34 && pos.y < 260) {
-        this.safePosition.copy(pos);
-        this.safeQuaternion.copy(flight.object.quaternion);
-      }
-      return;
+    if (this.recoveryGrace > 0) {
+      this.recoveryGrace = Math.max(0, this.recoveryGrace - dt);
+      return false;
     }
+
+    const surface = world.collisionHeightAt(pos.x, pos.z);
+    const clearance = pos.y - surface;
+    if (clearance > 6) {
+      // Only bank clear, high airspace as a preferred checkpoint. A point just
+      // above a ridge can be inside the next ridge a second later.
+      if (clearance > 95 && pos.y < 300 && flight.speed > 45) {
+        this.safeClock += dt;
+        if (this.safeClock > 0.8) {
+          this.safePosition.copy(pos);
+          this.safeQuaternion.copy(flight.object.quaternion);
+          this.safeClock = 0;
+        }
+      } else {
+        this.safeClock = Math.min(this.safeClock, 0.5);
+      }
+      return false;
+    }
+
+    this.crashes++;
     fx.crash(pos);
     audio.crash();
     hud.flash('crash');
-    hud.showHint('SOFT LANDING · BACK IN THE AIR', 2.2);
+    hud.showHint('AUTO RECOVERY · CLIMBING CLEAR', 2.2);
     this.ctx.callbacks.onShake(0.7);
     this.score = Math.max(0, this.score - 60);
     this.combo = 1;
-    flight.reset(this.safePosition, this.safeQuaternion, 88);
+
+    const away = scratch.v8.copy(flight.velocity).negate().normalize();
+    const recovery = world.findSafeRespawn(pos, away, this.safePosition);
+    flight.reset(recovery.position, recovery.quaternion, clamp(flight.speed, 72, 96));
     this.prevPosition.copy(flight.object.position);
+    this.recoveryGrace = 1.15;
+    if (this.ctx.callbacks.onRecover) this.ctx.callbacks.onRecover();
+    return true;
   }
 
   updateStorms(dt) {

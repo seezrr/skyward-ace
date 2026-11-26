@@ -14,7 +14,7 @@ Halcyon is a self-contained browser flight game. There are no combat sorties, no
 - **Free Flight** — no timer. Gather sky lanterns, ride warm updrafts and watch the day turn to dusk and night.
 - **Daily Seed** — one seeded course for everyone today, with your best score kept locally on this device.
 
-The sky and sea move from golden hour through dusk to night. Camera modes are spring-armed chase, free orbit and a clean photo mode. Controls work with keyboard, mouse steering, gamepad and touch (virtual stick, optional tilt). Auto-level, invert-Y, volume, reduced motion and Low/Med/High quality are adjustable in Settings; dynamic resolution protects the frame rate.
+The sky and sea move from golden hour through dusk to night. Flight is physics-based: banking trades lift for a coordinated turn, airspeed and angle of attack drive the stall, and the plane carries its momentum through corners. A/D and ←/→ bank the wing and carve the flight path together — they do not simply spin the model. W/↑ raises the nose and S/↓ lowers it; assisted flight settles into a readable climb or dive instead of looping. Island collisions use the same surface the renderer draws, and a recovery places the plane high, clear and pointed away from the impact instead of back into the ridge. Spring-armed chase, free and photo cameras keep the plane in frame. Controls work with keyboard, mouse steering, gamepad and touch (virtual stick, optional tilt). Steering assist, invert-Y, volume, reduced motion and Low/Med/High quality are adjustable in Settings; dynamic resolution protects the frame rate.
 
 ## Run it
 
@@ -33,15 +33,15 @@ mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
 | Input | Action |
 | --- | --- |
-| W / S or ↑ / ↓ | Pitch down / up |
-| A / D or ← / → | Roll left / right |
+| W / S or ↑ / ↓ | Climb / dive (W / ↑ climbs) |
+| A / D or ← / → | Bank and turn left / right |
 | Q / E | Rudder yaw |
 | Shift / Ctrl | Throttle up / down |
 | Space | Hold to boost (FOV kick) |
 | C | Chase / free / photo camera |
 | P or Esc | Pause |
 | R | Soft restart |
-| G | Toggle auto-level |
+| G | Toggle steering assist (wings level / aerobatic rolls) |
 | V | Toggle mouse steering |
 | M | Mute |
 | 1 / 2 / 3 | Low / medium / high quality |

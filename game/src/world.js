@@ -121,6 +121,7 @@ export class World {
     this.clouds = [];
     this.chunks = new Map();
     this.chunkKeys = new Set();
+    this.islandCache = new Map();
 
     this.shared = this.buildSharedResources();
     this.buildSky();
@@ -279,9 +280,9 @@ export class World {
     });
     for (let i = 0; i < RING_COURSE.length; i++) {
       const [x, zy, z] = RING_COURSE[i];
-      const pos = new THREE.Vector3(x, Math.max(zy, this.heightAt(x, z) + 44), z);
+      const pos = new THREE.Vector3(x, Math.max(zy, this.collisionHeightAt(x, z) + 44), z);
       const next = RING_COURSE[(i + 1) % RING_COURSE.length];
-      const nextPos = new THREE.Vector3(next[0], Math.max(next[1], this.heightAt(next[0], next[2]) + 44), next[2]);
+      const nextPos = new THREE.Vector3(next[0], Math.max(next[1], this.collisionHeightAt(next[0], next[2]) + 44), next[2]);
       const normal = new THREE.Vector3().subVectors(nextPos, pos).normalize();
       const group = new THREE.Group();
       group.position.copy(pos);
@@ -337,7 +338,7 @@ export class World {
       const r = 110 + lanternRng() * 620;
       const x = Math.cos(a) * r;
       const z = -220 + Math.sin(a) * r;
-      const y = Math.max(46, this.heightAt(x, z) + 34) + lanternRng() * 70;
+      const y = Math.max(46, this.collisionHeightAt(x, z) + 34) + lanternRng() * 70;
       const group = new THREE.Group();
       group.position.set(x, y, z);
       const core = new THREE.Mesh(
@@ -367,7 +368,7 @@ export class World {
         const angle = t * Math.PI * 7;
         points.push(new THREE.Vector3(
           x + Math.cos(angle) * (7 + t * 16),
-          Math.max(8, this.heightAt(x, z)) + t * 170,
+          Math.max(8, this.collisionHeightAt(x, z)) + t * 170,
           z + Math.sin(angle) * (7 + t * 16),
         ));
       }
@@ -384,6 +385,122 @@ export class World {
     const base = fbm2(x * 0.00225, z * 0.00225, this.seed, 4);
     const detail = fbm2(x * 0.0061 + 19, z * 0.0061 - 11, this.seed ^ 0x9e37, 3);
     return Math.max(-7, (base - 0.455) * 430 + (detail - 0.5) * 34);
+  }
+
+  // Island geometry is generated per chunk, so collision uses the same cached
+  // description instead of the lower ocean floor. The cache is independent of
+  // which chunks are currently visible, meaning recovery never places the
+  // plane inside an island that has not streamed in yet.
+  islandAtChunk(gx, gz) {
+    const key = gx + ':' + gz;
+    if (this.islandCache.has(key)) return this.islandCache.get(key);
+    const baseX = gx * CHUNK + CHUNK * 0.5;
+    const baseZ = gz * CHUNK + CHUNK * 0.5;
+    let bestH = -999;
+    let bestX = baseX;
+    let bestZ = baseZ;
+    for (let ix = -1; ix <= 1; ix++) {
+      for (let iz = -1; iz <= 1; iz++) {
+        const sx = baseX + ix * CHUNK * 0.28;
+        const sz = baseZ + iz * CHUNK * 0.28;
+        const h = this.heightAt(sx, sz);
+        if (h > bestH) {
+          bestH = h;
+          bestX = sx;
+          bestZ = sz;
+        }
+      }
+    }
+    const island = bestH > 4 ? {
+      x: bestX,
+      z: bestZ,
+      peak: bestH,
+      radius: clamp(58 + bestH * 0.82, 66, 160),
+    } : null;
+    this.islandCache.set(key, island);
+    return island;
+  }
+
+  collisionHeightAt(x, z) {
+    let height = Math.max(-4, this.heightAt(x, z));
+    const gx = Math.floor(x / CHUNK);
+    const gz = Math.floor(z / CHUNK);
+    for (let ix = gx - 1; ix <= gx + 1; ix++) {
+      for (let iz = gz - 1; iz <= gz + 1; iz++) {
+        const island = this.islandAtChunk(ix, iz);
+        if (!island) continue;
+        const dx = x - island.x;
+        const dz = z - island.z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= island.radius * island.radius) continue;
+        const t = Math.sqrt(d2) / island.radius;
+        const fall = Math.pow(1 - t, 1.32);
+        const detail = (fbm2(x * 0.032, z * 0.032, this.seed ^ 0x3a11, 2) - 0.5) * 22;
+        const surface = island.peak * fall + detail * fall - 4.5 * t;
+        if (surface > height) height = surface;
+      }
+    }
+    return height;
+  }
+
+  clearanceAt(position) {
+    return position.y - this.collisionHeightAt(position.x, position.z);
+  }
+
+  // Pick an escape point above every visible surface and turn the nose away
+  // from the impact. Candidate rings fan out behind the impact first, so a
+  // recovery never drops the plane back in front of the obstacle it hit.
+  findSafeRespawn(position, awayDirection, preferred = null) {
+    const up = new THREE.Vector3(0, 1, 0);
+    const away = new THREE.Vector3();
+    if (awayDirection) away.copy(awayDirection);
+    away.y = 0;
+    if (away.lengthSq() < 0.0001) away.set(0, 0, 1);
+    away.normalize();
+
+    const candidates = [];
+    if (preferred) {
+      const dx = preferred.x - position.x;
+      const dz = preferred.z - position.z;
+      if (dx * dx + dz * dz > 60 * 60) candidates.push(new THREE.Vector3(preferred.x, 0, preferred.z));
+    }
+    const distances = [150, 240, 340, 460];
+    const offsets = [0, 0.65, -0.65, 1.3, -1.3, 2.1, -2.1, Math.PI];
+    for (const distance of distances) {
+      for (const offset of offsets) {
+        const dir = away.clone().applyAxisAngle(up, offset);
+        candidates.push(new THREE.Vector3(
+          position.x + dir.x * distance,
+          0,
+          position.z + dir.z * distance,
+        ));
+      }
+    }
+    candidates.push(new THREE.Vector3(position.x, 0, position.z));
+
+    let chosen = null;
+    for (const candidate of candidates) {
+      const surface = this.collisionHeightAt(candidate.x, candidate.z);
+      candidate.y = Math.max(position.y + 95, surface + 125, 135);
+      if (candidate.y - surface >= 100 && !this.stormAt(candidate)) {
+        chosen = candidate;
+        break;
+      }
+    }
+    if (!chosen) {
+      chosen = new THREE.Vector3(0, Math.max(position.y + 140, 180), 0);
+      chosen.y = Math.max(chosen.y, this.collisionHeightAt(0, 0) + 180);
+    }
+
+    const forward = chosen.clone().sub(position);
+    forward.y = 0;
+    if (forward.lengthSq() < 0.0001) forward.copy(away);
+    forward.normalize();
+    const quaternion = new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().lookAt(new THREE.Vector3(), forward, up),
+    );
+    quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.1));
+    return { position: chosen, quaternion, forward };
   }
 
   rebuildChunks(camX, camZ, force = false) {
@@ -416,23 +533,12 @@ export class World {
     const group = new THREE.Group();
     group.position.set(baseX, 0, baseZ);
 
-    let bestH = -999;
-    let bestX = 0;
-    let bestZ = 0;
-    for (let ix = -1; ix <= 1; ix++) {
-      for (let iz = -1; iz <= 1; iz++) {
-        const sx = baseX + ix * CHUNK * 0.28;
-        const sz = baseZ + iz * CHUNK * 0.28;
-        const h = this.heightAt(sx, sz);
-        if (h > bestH) {
-          bestH = h;
-          bestX = sx - baseX;
-          bestZ = sz - baseZ;
-        }
-      }
-    }
-    if (bestH > 4) {
-      const radius = clamp(58 + bestH * 0.82, 66, 160);
+    const island = this.islandAtChunk(gx, gz);
+    if (island) {
+      const bestH = island.peak;
+      const bestX = island.x - baseX;
+      const bestZ = island.z - baseZ;
+      const radius = island.radius;
       const segments = this.quality === 'low' ? 14 : 20;
       const rings = this.quality === 'low' ? 6 : 9;
       const positions = new Float32Array((rings + 1) * (segments + 1) * 3);
@@ -482,11 +588,11 @@ export class World {
       geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       geo.setIndex(indices);
       geo.computeVertexNormals();
-      const island = new THREE.Mesh(geo, this.shared.islandMat);
-      island.castShadow = true;
-      island.receiveShadow = true;
-      island.userData.ownGeometry = true;
-      group.add(island);
+      const islandMesh = new THREE.Mesh(geo, this.shared.islandMat);
+      islandMesh.castShadow = true;
+      islandMesh.receiveShadow = true;
+      islandMesh.userData.ownGeometry = true;
+      group.add(islandMesh);
 
       const wake = new THREE.Mesh(new THREE.RingGeometry(radius * 0.98, radius * 1.28, 28), this.shared.wakeMat);
       wake.rotation.x = -Math.PI / 2;
@@ -558,6 +664,7 @@ export class World {
       });
     }
     this.chunks.clear();
+    this.islandCache.clear();
     for (const ring of this.rings) this.scene.remove(ring.group);
     for (const storm of this.storms) this.scene.remove(storm.group);
     for (const lantern of this.lanterns) this.scene.remove(lantern.group);

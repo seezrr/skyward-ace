@@ -164,26 +164,31 @@ export class InputController {
   }
 
   get pitch() {
-    let value = (this.isDown('KeyS', 'ArrowDown') ? 1 : 0) - (this.isDown('KeyW', 'ArrowUp') ? 1 : 0);
+    // Positive pitch commands climb: W / ArrowUp raise the nose, S / ArrowDown
+    // lower it. Gamepad and mouse axes are negated because "up" is negative
+    // in both coordinate systems.
+    let value = (this.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.isDown('KeyS', 'ArrowDown') ? 1 : 0);
     if (this.gamepad) {
-      value += clamp(this.gamepad.axes[1] || 0, -1, 1);
+      value -= clamp(this.gamepad.axes[1] || 0, -1, 1);
       if (this.tiltEnabled) value += this.tiltY;
     } else if (this.tiltEnabled) {
       value += this.tiltY;
     }
-    value += this.smoothMouseY;
+    value -= this.smoothMouseY;
     return clamp(value, -1, 1) * (this.invertY ? -1 : 1);
   }
 
   get roll() {
+    // Positive roll banks and turns left; rightward stick/mouse movement must
+    // therefore subtract, matching A / ArrowLeft and D / ArrowRight.
     let value = (this.isDown('KeyA', 'ArrowLeft') ? 1 : 0) - (this.isDown('KeyD', 'ArrowRight') ? 1 : 0);
     if (this.gamepad) {
-      value += clamp(this.gamepad.axes[0] || 0, -1, 1);
-      if (this.tiltEnabled) value += this.tiltX;
+      value -= clamp(this.gamepad.axes[0] || 0, -1, 1);
+      if (this.tiltEnabled) value -= this.tiltX;
     } else if (this.tiltEnabled) {
-      value += this.tiltX;
+      value -= this.tiltX;
     }
-    value += this.smoothMouseX + this.touchX;
+    value -= this.smoothMouseX + this.touchX;
     return clamp(value, -1, 1);
   }
 

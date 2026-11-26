@@ -22,38 +22,70 @@
 </div>
 
 <div id="menu" class="screen">
-  <div class="menu-corner">MAKE.FUN · ARCADE FLIGHT</div>
-  <div class="title-wrap">
-    <div class="eyebrow">A CALM FLIGHT THROUGH THE LAST LIGHT</div>
-    <h1>HALCYON</h1>
-    <div class="subtitle">Thread the light. Ride the wind. Outrun the sunset.</div>
-  </div>
-  <div class="mode-grid">
-    <button class="mode-card" data-mode="ring">
-      <span class="card-num">01</span>
-      <span class="card-name">RING RUN</span>
-      <span class="card-desc">Chain glowing rings before the sun slips below the horizon. Close passes paint wind streaks.</span>
-      <span class="card-cta">BEGIN THE RUN&nbsp; ›</span>
-    </button>
-    <button class="mode-card" data-mode="free">
-      <span class="card-num">02</span>
-      <span class="card-name">FREE FLIGHT</span>
-      <span class="card-desc">No timer, no pressure. Gather sky lanterns and climb the warm updrafts over the islands.</span>
-      <span class="card-cta">TAKE OFF&nbsp; ›</span>
-    </button>
-    <button class="mode-card" data-mode="daily">
-      <span class="card-num">03</span>
-      <span class="card-name">DAILY SEED</span>
-      <span class="card-desc">One course for everyone today. Your best run stays on this device.</span>
-      <span class="card-cta" id="daily-label">FLY TODAY’S COURSE&nbsp; ›</span>
-    </button>
-  </div>
-  <div class="menu-footer">
-    <button id="controls-btn" class="text-btn">CONTROLS</button>
-    <span class="dot">·</span>
-    <button id="settings-btn" class="text-btn">SETTINGS</button>
-    <span class="dot">·</span>
-    <span>HEADPHONES RECOMMENDED · SOUND IS SYNTHESISED</span>
+  <div class="menu-shell">
+    <header class="menu-top">
+      <div class="brand"><span class="brand-mark"></span> MAKE.FUN <span class="brand-sub">/ ARCADE FLIGHT</span></div>
+      <nav class="menu-actions" aria-label="Flight options">
+        <button id="controls-btn" class="ghost-btn">CONTROLS</button>
+        <button id="settings-btn" class="ghost-btn">SETTINGS</button>
+      </nav>
+    </header>
+
+    <main class="menu-main">
+      <section class="intro">
+        <div class="eyebrow">A CALM FLIGHT THROUGH THE LAST LIGHT</div>
+        <h1>HALCYON</h1>
+        <p class="subtitle">Thread the light. Ride the wind. Outrun the sunset.</p>
+        <div class="intro-rule"></div>
+        <p class="intro-copy">A small plane, a warm horizon, and a sky that changes as you fly. Pick a line and stay a little longer.</p>
+        <div class="intro-tip"><span class="tip-key">A / D</span><span>bank and turn together</span></div>
+      </section>
+
+      <section class="flights" aria-label="Choose a flight">
+        <div class="flights-heading"><span>CHOOSE A FLIGHT</span><span>01 — 03</span></div>
+        <div class="flight-list">
+          <button class="flight-card" data-mode="ring">
+            <span class="flight-index">01</span>
+            <span class="flight-body">
+              <span class="flight-name">Ring Run</span>
+              <span class="flight-desc">Thread nine glowing gates before the light fades. Close passes build your chain.</span>
+              <span class="flight-tags"><span>~78 SEC</span><span>CHAIN SCORING</span></span>
+            </span>
+            <span class="flight-go" aria-hidden="true">→</span>
+          </button>
+          <button class="flight-card" data-mode="free">
+            <span class="flight-index">02</span>
+            <span class="flight-body">
+              <span class="flight-name">Free Flight</span>
+              <span class="flight-desc">No timer. Gather sky lanterns, ride warm updrafts and watch dusk become night.</span>
+              <span class="flight-tags"><span>NO TIMER</span><span>EXPLORE</span></span>
+            </span>
+            <span class="flight-go" aria-hidden="true">→</span>
+          </button>
+          <button class="flight-card" data-mode="daily">
+            <span class="flight-index">03</span>
+            <span class="flight-body">
+              <span class="flight-name">Daily Seed</span>
+              <span class="flight-desc">One island course for everyone today. Your best run stays on this device.</span>
+              <span class="flight-tags"><span id="daily-label">TODAY’S COURSE</span><span>LOCAL BEST</span></span>
+            </span>
+            <span class="flight-go" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="menu-bottom">
+      <div class="key-hints">
+        <span><b>W/S</b> climb / dive</span>
+        <span><b>A/D</b> steer</span>
+        <span><b>SHIFT</b> throttle</span>
+        <span><b>SPACE</b> boost</span>
+        <span><b>C</b> camera</span>
+        <span><b>ESC</b> pause</span>
+      </div>
+      <div class="foot-note">SYNTHESISED SOUND · NO DOWNLOADS</div>
+    </footer>
   </div>
 </div>
 
@@ -62,20 +94,20 @@
     <div class="sheet-head"><span class="panel-kicker">FLIGHT MANUAL</span><button class="close-btn" data-close="controls-card">ESC</button></div>
     <h2>Controls</h2>
     <div class="control-grid">
-      <div><b>W / S</b><span>pitch down / up</span></div>
-      <div><b>A / D</b><span>roll left / right</span></div>
-      <div><b>Q / E</b><span>rudder yaw</span></div>
+      <div><b>W / S · ↑ / ↓</b><span>climb / dive</span></div>
+      <div><b>A / D · ← / →</b><span>bank and turn left / right</span></div>
+      <div><b>Q / E</b><span>rudder trim</span></div>
       <div><b>SHIFT / CTRL</b><span>throttle up / down</span></div>
       <div><b>SPACE</b><span>hold to boost</span></div>
       <div><b>C</b><span>chase · free · photo camera</span></div>
       <div><b>P / ESC</b><span>pause</span></div>
       <div><b>R</b><span>restart the run</span></div>
-      <div><b>G</b><span>toggle auto-level</span></div>
+      <div><b>G</b><span>steering assist</span></div>
       <div><b>V</b><span>mouse steering</span></div>
       <div><b>M</b><span>mute audio</span></div>
       <div><b>1 / 2 / 3</b><span>low · medium · high quality</span></div>
     </div>
-    <p class="sheet-note">Gamepad: left stick steers, triggers adjust throttle, A boosts, B changes camera. On touch: drag the stick, hold BOOST, or enable tilt in Settings.</p>
+    <p class="sheet-note">Steering assist banks into your turn and levels the wings when you let go. Turn it off in Settings for full aerobatic rolls. Gamepad: left stick steers, triggers adjust throttle, A boosts, B changes camera. On touch: drag the stick, hold BOOST, or enable tilt in Settings.</p>
   </div>
 </div>
 
@@ -85,7 +117,7 @@
     <h2>Settings</h2>
     <label class="setting-row"><span>Volume</span><input id="setting-volume" type="range" min="0" max="100" value="72"></label>
     <div class="setting-row"><span>Quality</span><div class="segment" id="quality-group"><button data-quality="low">LOW</button><button data-quality="med">MED</button><button data-quality="high" class="on">HIGH</button></div></div>
-    <div class="setting-row"><span>Auto-level</span><button class="toggle on" data-setting="autoLevel">ON</button></div>
+    <div class="setting-row"><span>Steering assist</span><button class="toggle on" data-setting="autoLevel">ON</button></div>
     <div class="setting-row"><span>Invert Y</span><button class="toggle" data-setting="invertY">OFF</button></div>
     <div class="setting-row"><span>Mouse steering</span><button class="toggle" data-setting="mouseSteer">OFF</button></div>
     <div class="setting-row"><span>Reduce motion</span><button class="toggle" data-setting="reduceMotion">OFF</button></div>

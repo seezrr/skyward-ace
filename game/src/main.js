@@ -63,6 +63,7 @@ function boot(glContext) {
   const world = new World(scene, dailySeed(), settings.quality);
   const aircraft = buildAircraft();
   const plane = aircraft.plane;
+  plane.scale.setScalar(1.18);
   scene.add(plane);
   const flight = new FlightModel(plane);
   flight.autoLevel = !!settings.autoLevel;
@@ -95,18 +96,19 @@ function boot(glContext) {
   let dayPhase = 0.04;
   let fps = 60;
   let shotPreset = '';
+  let cameraSnap = true;
 
   const director = new GameDirector({
     flight, world, fx, audio, hud, plane,
     callbacks: {
       onShake: (amount) => { shake = Math.min(1.5, shake + amount); },
+      onRecover: () => { cameraSnap = true; },
       onEnd: (stats) => showResult(stats),
     },
   });
 
   const chaseBase = new THREE.Vector3();
   const chaseTarget = new THREE.Vector3();
-  const freeBase = new THREE.Vector3();
   const cameraDesired = new THREE.Vector3();
   const cameraLook = new THREE.Vector3();
   const cameraUp = new THREE.Vector3();
@@ -168,6 +170,7 @@ function boot(glContext) {
 
   function startMode(mode, preset = '') {
     audio.unlock();
+    cameraSnap = true;
     closeOverlays();
     setScreen(menuEl, false, true);
     setScreen(pauseEl, false, true);
@@ -188,6 +191,7 @@ function boot(glContext) {
 
   function toMenu() {
     state = 'menu';
+    cameraSnap = true;
     director.active = false;
     fx.clear();
     dayPhase = 0.04;
@@ -282,7 +286,7 @@ function boot(glContext) {
     if (code === 'KeyG') {
       settings.autoLevel = !settings.autoLevel;
       applySettings();
-      toast('AUTO-LEVEL ' + (settings.autoLevel ? 'ON' : 'OFF'));
+      toast('STEERING ASSIST ' + (settings.autoLevel ? 'ON' : 'OFF'));
       return;
     }
     if (code === 'KeyV') {
@@ -362,7 +366,7 @@ function boot(glContext) {
     if (state === 'playing') togglePause();
   });
 
-  document.getElementById('daily-label').textContent = 'FLY TODAY’S COURSE · ' + dailySeed() + '  ›';
+  document.getElementById('daily-label').textContent = 'SEED ' + dailySeed();
   applySettings();
   if (debugEnabled) debugEl.classList.remove('hidden');
 
@@ -377,6 +381,11 @@ function boot(glContext) {
     world.setTimeOfDay(dayPhase);
   }
 
+  function moveCamera(desired, lambda, dt) {
+    if (cameraSnap) camera.position.copy(desired);
+    else camera.position.lerp(desired, 1 - Math.exp(-lambda * dt));
+  }
+
   function updateCamera(dt) {
     const forward = scratch.v1;
     const up = scratch.v2;
@@ -386,48 +395,40 @@ function boot(glContext) {
     flight.getRight(right);
     const speed = flight.speed;
     const boostKick = flight.boosting ? 7 : 0;
+    const rollBlend = settings.reduceMotion ? 0.08 : 0.34;
 
+    // Every view is a spring arm attached to the aircraft: the camera may
+    // drift, but it never orbits away and leaves the plane off-screen.
     if (state === 'menu') {
-      const angle = menuClock * 0.12 + 0.6;
-      cameraDesired.set(
-        plane.position.x + Math.sin(angle) * 76,
-        plane.position.y + 18 + Math.sin(angle * 0.7) * 8,
-        plane.position.z + Math.cos(angle) * 76,
-      );
-      cameraLook.copy(plane.position).addScaledVector(forward, 26).addScaledVector(up, 2);
-      camera.position.lerp(cameraDesired, 1 - Math.exp(-2.8 * dt));
-      cameraUp.copy(worldUp).lerp(up, 0.22);
-      camera.fov = damp(camera.fov, 62, 3, dt);
+      const drift = Math.sin(menuClock * 0.3) * 9;
+      cameraDesired.copy(plane.position).addScaledVector(forward, -52).addScaledVector(up, 14).addScaledVector(right, 22 + drift);
+      cameraLook.copy(plane.position).addScaledVector(forward, 12).addScaledVector(up, 2);
+      moveCamera(cameraDesired, 3.4, dt);
+      cameraUp.copy(worldUp).lerp(up, 0.12);
+      camera.fov = damp(camera.fov, 60, 3, dt);
     } else if (cameraMode === 1) {
-      const angle = menuClock * 0.22;
-      freeBase.copy(plane.position).addScaledVector(up, 22).addScaledVector(forward, -12);
-      cameraDesired.set(
-        freeBase.x + Math.sin(angle) * 72,
-        freeBase.y + 12,
-        freeBase.z + Math.cos(angle) * 72,
-      );
-      camera.position.lerp(cameraDesired, 1 - Math.exp(-3.2 * dt));
-      cameraLook.copy(plane.position).addScaledVector(forward, 22);
-      cameraUp.copy(worldUp);
+      const drift = Math.sin(menuClock * 0.24) * 11;
+      cameraDesired.copy(plane.position).addScaledVector(forward, -58).addScaledVector(up, 19).addScaledVector(right, 25 + drift);
+      cameraLook.copy(plane.position).addScaledVector(forward, 18).addScaledVector(up, 3);
+      moveCamera(cameraDesired, 3.2, dt);
+      cameraUp.copy(worldUp).lerp(up, 0.14);
       camera.fov = damp(camera.fov, 58, 3.4, dt);
     } else if (cameraMode === 2) {
-      const angle = menuClock * 0.16 + 1.2;
-      cameraDesired.set(
-        plane.position.x + Math.sin(angle) * 52,
-        plane.position.y + 12,
-        plane.position.z + Math.cos(angle) * 52,
-      );
-      camera.position.lerp(cameraDesired, 1 - Math.exp(-2.6 * dt));
-      cameraLook.copy(plane.position).addScaledVector(forward, 16);
-      cameraUp.copy(worldUp).lerp(up, 0.12);
+      cameraDesired.copy(plane.position).addScaledVector(forward, 5).addScaledVector(right, 40).addScaledVector(up, 11);
+      cameraLook.copy(plane.position).addScaledVector(up, 1.5);
+      moveCamera(cameraDesired, 3, dt);
+      cameraUp.copy(worldUp);
       camera.fov = damp(camera.fov, 50, 3, dt);
     } else {
-      chaseBase.copy(plane.position).addScaledVector(up, 10.5).addScaledVector(forward, -42).addScaledVector(right, 0);
-      camera.position.lerp(chaseBase, 1 - Math.exp(-5.8 * dt));
-      chaseTarget.copy(plane.position).addScaledVector(forward, 62).addScaledVector(up, 3.2);
-      cameraUp.copy(worldUp).lerp(up, 0.58);
-      camera.fov = damp(camera.fov, clamp(62 + (speed - 82) * 0.13, 60, 84) + boostKick, 3.6, dt);
+      chaseBase.copy(plane.position).addScaledVector(forward, -35).addScaledVector(up, 8.6);
+      moveCamera(chaseBase, 6.4, dt);
+      chaseTarget.copy(plane.position).addScaledVector(forward, 46).addScaledVector(up, 2.6);
+      cameraLook.copy(chaseTarget);
+      cameraUp.copy(worldUp).lerp(up, rollBlend);
+      camera.fov = damp(camera.fov, clamp(61 + (speed - 82) * 0.12, 59, 82) + boostKick, 3.6, dt);
     }
+
+    cameraSnap = false;
 
     if (shake > 0.001) {
       const t = performance.now() * 0.001;
@@ -470,7 +471,8 @@ function boot(glContext) {
       fpsClock = 0;
       if (debugEnabled) {
         debugFpsEl.textContent = Math.round(fps) + ' FPS';
-        debugInfoEl.textContent = 'MODE ' + director.mode + '\nSTATE ' + state + '\nRINGS ' + director.ringIndex;
+        debugInfoEl.textContent = 'MODE ' + director.mode + '\nSTATE ' + state + '\nRINGS ' + director.ringIndex
+          + '\nHDG ' + Math.round(flight.headingDegrees()) + '  BANK ' + Math.round(flight.bankDegrees());
       }
     }
     if (drsClock >= 0.7) {
@@ -600,6 +602,10 @@ function boot(glContext) {
 
   window.__halcyon = {
     getState() {
+      const projected = new THREE.Vector3().copy(plane.position).project(camera);
+      const forward = flight.getForward(new THREE.Vector3());
+      const right = flight.getRight(new THREE.Vector3());
+      const surface = world.collisionHeightAt(plane.position.x, plane.position.z);
       return {
         state,
         mode: director.mode,
@@ -618,6 +624,36 @@ function boot(glContext) {
         night: Number(world.nightFactor.toFixed(2)),
         lanternsActive: world.lanterns.filter((l) => l.active).length,
         position: { x: plane.position.x, y: plane.position.y, z: plane.position.z },
+        heading: Math.round(flight.headingDegrees()),
+        headingRaw: Number(flight.headingDegrees().toFixed(3)),
+        bank: Math.round(flight.bankDegrees()),
+        bankRaw: Number(flight.bankDegrees().toFixed(3)),
+        pitch: Math.round(flight.pitchDegrees()),
+        surface: Number(surface.toFixed(1)),
+        clearance: Number((plane.position.y - surface).toFixed(1)),
+        recoveryGrace: Number((director.recoveryGrace || 0).toFixed(2)),
+        crashes: director.crashes || 0,
+        forwardSpeed: Number(flight.velocity.dot(forward).toFixed(1)),
+        verticalSpeed: Number(flight.velocity.y.toFixed(1)),
+        stalled: !!flight.stalled,
+        sideSpeed: Number(flight.velocity.dot(right).toFixed(1)),
+        controls: { roll: input.roll, pitch: input.pitch, yaw: input.yaw },
+        rates: { roll: Number(flight.rollRate.toFixed(2)), pitch: Number(flight.pitchRate.toFixed(2)), yaw: Number(flight.yawRate.toFixed(2)) },
+        cameraInfo: {
+          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+          direction: camera.getWorldDirection(new THREE.Vector3()).toArray().map((n) => Number(n.toFixed(3))),
+          look: cameraLook.toArray().map((n) => Number(n.toFixed(3))),
+          forward: flight.getForward(new THREE.Vector3()).toArray().map((n) => Number(n.toFixed(3))),
+          near: camera.near,
+          far: camera.far,
+        },
+        planeScreen: {
+          x: Math.round((projected.x * 0.5 + 0.5) * window.innerWidth),
+          y: Math.round((-projected.y * 0.5 + 0.5) * window.innerHeight),
+          ndc: { x: Number(projected.x.toFixed(3)), y: Number(projected.y.toFixed(3)), z: Number(projected.z.toFixed(3)) },
+          inView: projected.z > -1 && projected.z < 1 && Math.abs(projected.x) < 0.95 && Math.abs(projected.y) < 0.95,
+          distance: Number(camera.position.distanceTo(plane.position).toFixed(1)),
+        },
         settings: { ...settings },
         shotPreset,
       };
@@ -635,5 +671,16 @@ function boot(glContext) {
     },
     mute() { settings.muted = !settings.muted; applySettings(); },
     setShotPreset,
+    terrainAt(x, z) { return Number(world.collisionHeightAt(x, z).toFixed(2)); },
+    debugPlace(x, y, z, vx = 0, vy = 0, vz = 0) {
+      plane.position.set(x, y, z);
+      plane.quaternion.identity();
+      flight.velocity.set(vx, vy, vz);
+      flight.stalled = false;
+      flight.stallWarning = false;
+      director.prevPosition.copy(plane.position);
+      cameraSnap = true;
+      return { x: plane.position.x, y: plane.position.y, z: plane.position.z };
+    },
   };
 }
