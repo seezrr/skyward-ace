@@ -97,6 +97,7 @@ function boot(glContext) {
   let fps = 60;
   let shotPreset = '';
   let cameraSnap = true;
+  let shotFreeze = false;
 
   const director = new GameDirector({
     flight, world, fx, audio, hud, plane,
@@ -471,6 +472,9 @@ function boot(glContext) {
     lastTime = now;
     if (!Number.isFinite(dt) || dt < 0) dt = 0;
     dt = Math.min(dt, 0.05);
+    // Debug-only presentation hold: the render loop keeps drawing while the
+    // simulation clock stops, so a screenshot captures a deliberate pose.
+    if (shotFreeze) dt = 0;
     fpsFrames++;
     fpsClock += dt;
     drsClock += dt;
@@ -538,6 +542,7 @@ function boot(glContext) {
 
     const hudState = {
       screen: state,
+      mode: director.mode,
       flight, world,
       debug: debugEnabled,
       fps,
@@ -588,7 +593,7 @@ function boot(glContext) {
       flight.getForward(scratch.v1).multiplyScalar(104);
       flight.velocity.copy(scratch.v1);
       director.prevPosition.copy(plane.position);
-      cameraMode = 1;
+      cameraMode = 0;
       menuClock = 5.2;
       dayPhase = 0.52;
       world.setTimeOfDay(dayPhase);
@@ -599,7 +604,7 @@ function boot(glContext) {
       flight.getForward(scratch.v1).multiplyScalar(82);
       flight.velocity.copy(scratch.v1);
       director.prevPosition.copy(plane.position);
-      cameraMode = 2;
+      cameraMode = 0;
       menuClock = 8.1;
       dayPhase = 0.98;
       world.setTimeOfDay(dayPhase);
@@ -621,6 +626,10 @@ function boot(glContext) {
         active: director.active,
         score: Math.round(director.score || 0),
         rings: director.ringIndex || 0,
+        ringsPassed: director.ringsPassed || 0,
+        lanterns: director.lanterns || 0,
+        fuel: Number((director.fuel ?? 100).toFixed(1)),
+        hull: Number((director.hull ?? 100).toFixed(1)),
         timer: Number((director.timer || 0).toFixed(1)),
         fps: Math.round(fps),
         camera: cameraNames[cameraMode],
@@ -692,6 +701,36 @@ function boot(glContext) {
       return true;
     },
     mute() { settings.muted = !settings.muted; applySettings(); },
+    clearHint() { hud.hintTimer = 0; },
+    freezeShot(value = true) { shotFreeze = !!value; return shotFreeze; },
+    setDayPhase(phase) {
+      dayPhase = clamp(phase, 0, 1);
+      world.setTimeOfDay(dayPhase);
+      return dayPhase;
+    },
+    // Presentation hook used by the screenshot harness: put the game in a
+    // real, reachable mid-sortie state (progress, score, fuel, damage) before a
+    // render. It never changes flight physics or scoring rules.
+    setShotState(values = {}) {
+      if (!director.active) return false;
+      if (Number.isFinite(values.score)) director.score = Math.max(0, values.score);
+      if (Number.isFinite(values.fuel)) director.fuel = clamp(values.fuel, 0, 100);
+      if (Number.isFinite(values.hull)) director.hull = clamp(values.hull, 0, 100);
+      if (Number.isFinite(values.combo)) director.combo = clamp(values.combo, 1, 9);
+      if (Number.isFinite(values.timer)) director.timer = Math.max(0, values.timer);
+      if (Number.isFinite(values.lanterns)) director.lanterns = Math.max(0, values.lanterns);
+      if (Number.isFinite(values.throttle)) flight.throttle = clamp(values.throttle, 0.08, 1);
+      if (Number.isFinite(values.rings)) {
+        const target = clamp(Math.floor(values.rings), 0, world.rings.length - 1);
+        director.ringIndex = target;
+        director.ringsPassed = target;
+        for (let i = 0; i < world.rings.length; i++) world.rings[i].passed = i < target;
+        world.highlightRing(target);
+      }
+      director.comboTimer = 3.2;
+      director.fuelWarned = director.fuel < 18;
+      return { score: director.score, rings: director.ringIndex, fuel: director.fuel, hull: director.hull };
+    },
     setShotPreset,
     terrainAt(x, z) { return Number(world.collisionHeightAt(x, z).toFixed(2)); },
     debugPlace(x, y, z, vx = 0, vy = 0, vz = 0) {

@@ -29,6 +29,9 @@ export class GameDirector {
     this.seed = dailySeed();
     this.best = 0;
     this.timer = 0;
+    this.fuel = 100;
+    this.hull = 100;
+    this.fuelWarned = false;
   }
 
   start(mode) {
@@ -52,6 +55,9 @@ export class GameDirector {
     this.lastSkim = 0;
     this.updraft = 0;
     this.storm = false;
+    this.fuel = 100;
+    this.hull = 100;
+    this.fuelWarned = false;
     this.seed = mode === 'daily' ? dailySeed() : world.seed;
     if (mode === 'daily') world.setSeed(this.seed);
     world.resetRun();
@@ -80,6 +86,8 @@ export class GameDirector {
 
     const recovered = this.updateCrash(dt);
     this.updateStorms(dt);
+    this.updateResources(dt);
+    if (!this.active) return;
     if (this.mode === 'free') this.updateFree(dt);
     else if (!recovered) this.updateRing(before, current);
 
@@ -130,6 +138,7 @@ export class GameDirector {
     hud.showHint('AUTO RECOVERY · CLIMBING CLEAR', 2.2);
     this.ctx.callbacks.onShake(0.7);
     this.score = Math.max(0, this.score - 60);
+    this.hull = Math.max(0, this.hull - 18);
     this.combo = 1;
 
     const away = scratch.v8.copy(flight.velocity).negate().normalize();
@@ -139,6 +148,26 @@ export class GameDirector {
     this.recoveryGrace = 1.15;
     if (this.ctx.callbacks.onRecover) this.ctx.callbacks.onRecover();
     return true;
+  }
+
+  // Fuel and hull turn a clean line into a decision: rings and lanterns top
+  // the tank back up, storms and impacts cost airframe, and an empty tank
+  // leaves just enough thrust for a careful landing rather than a sprint.
+  updateResources(dt) {
+    const { flight, audio, hud } = this.ctx;
+    const burn = (0.18 + flight.throttle * 0.42 + (flight.boosting ? 0.52 : 0))
+      * (this.mode === 'free' ? 0.62 : 1);
+    this.fuel = clamp(this.fuel - dt * burn, 0, 100);
+    if (this.fuel <= 0) flight.throttle = Math.min(flight.throttle, 0.14);
+    if (this.storm) this.hull = clamp(this.hull - dt * 2.4, 0, 100);
+    if (this.fuel < 18 && !this.fuelWarned) {
+      this.fuelWarned = true;
+      hud.showHint('FUEL LOW · EASE THE THROTTLE OR TAKE A GATE', 2.8);
+      audio.storm();
+    } else if (this.fuel > 32) {
+      this.fuelWarned = false;
+    }
+    if (this.hull <= 0) this.end(false, 'AIRFRAME LOST');
   }
 
   updateStorms(dt) {
@@ -182,6 +211,7 @@ export class GameDirector {
       const bonus = 500 * this.combo;
       this.score += bonus;
       this.timer = Math.min(RING_TIME + 12, this.timer + 4.2);
+      this.fuel = Math.min(100, this.fuel + 11);
       this.ringsPassed++;
       fx.burst(ring.position, 0xffd39a, 20, 34, 6);
       audio.ring(this.combo);
@@ -198,6 +228,7 @@ export class GameDirector {
       this.nearMisses++;
       const bonus = 180 * this.combo;
       this.score += bonus;
+      this.fuel = Math.min(100, this.fuel + 4);
       flight.getForward(scratch.v4).multiplyScalar(-1);
       fx.windStreak(current, scratch.v4, 0xa8f0d6);
       audio.updraft();
@@ -215,6 +246,7 @@ export class GameDirector {
       this.comboTimer = COMBO_WINDOW;
       const bonus = 220 * this.combo;
       this.score += bonus;
+      this.fuel = Math.min(100, this.fuel + 7);
       fx.burst(lantern.position, 0xffdfa6, 16, 27, 5);
       audio.lantern();
       hud.popup(lantern.position, 'LANTERN  +' + bonus, '#ffdfa6');
@@ -248,6 +280,8 @@ export class GameDirector {
       nearMisses: this.nearMisses,
       lanterns: this.lanterns,
       barrels: flight.barrelRolls,
+      fuel: Math.round(this.fuel),
+      hull: Math.round(this.hull),
       time: this.time,
       timer: this.timer,
       seed: this.seed,
@@ -270,14 +304,15 @@ export class GameDirector {
 
   hudState() {
     const label = this.mode === 'free'
-      ? 'FREE FLIGHT'
-      : this.mode === 'daily' ? 'DAILY SEED · ' + this.seed : 'RING RUN';
+      ? 'LANTERN PATROL'
+      : this.mode === 'daily' ? 'DAILY COURSE' : 'RING RUN';
     const value = this.mode === 'free'
-      ? String(Math.round(this.score)).padStart(5, '0')
+      ? String(Math.round(this.score)).padStart(6, '0')
       : formatTime(this.timer);
+    const scoreText = String(Math.round(this.score)).padStart(6, '0');
     const sub = this.mode === 'free'
-      ? 'LANTERNS ' + this.lanterns + ' · BEST ' + Math.round(this.best)
-      : 'RINGS ' + this.ringIndex + '/' + this.ctx.world.rings.length + ' · BEST ' + Math.round(this.best);
+      ? 'SCORE ' + scoreText + ' · LANTERNS ' + this.lanterns
+      : 'SCORE ' + scoreText + ' · RINGS ' + this.ringIndex + '/' + this.ctx.world.rings.length;
 
     // The guidance target is also the debug surface used by the playtests:
     // one description of the active gate shared by HUD, tests and scoring.
@@ -309,6 +344,13 @@ export class GameDirector {
       seed: this.seed,
       timer: this.timer,
       best: this.best,
+      score: Math.round(this.score),
+      rings: this.ringIndex,
+      totalRings: this.ctx.world.rings.length,
+      lanterns: this.lanterns,
+      fuel: this.fuel,
+      hull: this.hull,
+      lowFuel: this.fuel < 18,
       ringTarget: target,
     };
   }

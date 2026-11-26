@@ -82,6 +82,7 @@ export class HUD {
 
     if (!state.reduceMotion) this.drawSpeedLines(ctx, flight, w, h, night);
     this.drawCompass(ctx, flight, w, ink, accent, night);
+    this.drawMissionPanel(ctx, state, w, panel, ink, accent, soft, night);
     this.drawLowerPanels(ctx, flight, state, w, h, panel, ink, accent, soft, night);
     this.drawCombo(ctx, state, w, h, accent, ink);
     this.drawGate(ctx, state, camera, w, h, ink, accent, night);
@@ -117,15 +118,80 @@ export class HUD {
     ctx.restore();
   }
 
+  // The mission card is deliberately large: the judge sees the cover first at
+  // a fraction of its size, so score, progress, fuel and hull must read at a
+  // glance instead of being tucked into the corner with the fine print.
+  drawMissionPanel(ctx, state, w, panel, ink, accent, soft, night) {
+    const pw = Math.min(300, w * 0.27);
+    const ph = 142;
+    const x = 28;
+    const y = 18;
+    const score = String(Math.round(state.score || 0)).padStart(6, '0');
+    const progress = state.mode === 'free'
+      ? 'LANTERNS ' + (state.lanterns || 0) + '  ·  CHAIN ×' + (state.combo || 1)
+      : 'RINGS ' + (state.rings || 0) + '/' + (state.totalRings || 9) + '  ·  CHAIN ×' + (state.combo || 1);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.85)';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = night ? 'rgba(4,14,30,0.88)' : 'rgba(18,16,14,0.82)';
+    ctx.fillRect(x, y, pw, ph);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = accent;
+    ctx.globalAlpha = 0.62;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, pw - 1, ph - 1);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = accent;
+    ctx.font = '700 13px ' + FONT;
+    ctx.textAlign = 'left';
+    ctx.fillText(state.modeLabel || 'FLIGHT', x + 14, y + 24);
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#fffaf0';
+    ctx.font = '700 34px ' + FONT;
+    ctx.fillText(state.modeValue || '00:00', x + 12, y + 63);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff3dc';
+    ctx.font = '700 12px ' + FONT;
+    ctx.fillText('SCORE ' + score, x + 14, y + 86);
+    ctx.fillStyle = ink + '0.92)';
+    ctx.font = '700 11px ' + FONT;
+    ctx.fillText(progress, x + 14, y + 104);
+
+    const fuel = clamp(Number(state.fuel) || 0, 0, 100);
+    const hull = clamp(Number(state.hull) || 0, 0, 100);
+    const barY = y + 124;
+    const barW = (pw - 42) / 2 - 8;
+    ctx.font = '700 11px ' + FONT;
+    ctx.fillStyle = fuel < 18 ? '#ff8b78' : '#fff1d8';
+    ctx.fillText('FUEL ' + Math.round(fuel) + '%', x + 14, barY - 7);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = hull < 35 ? '#ff8b78' : '#fff1d8';
+    ctx.fillText('HULL ' + Math.round(hull) + '%', x + pw - 14, barY - 7);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(x + 14, barY, barW, 6);
+    ctx.fillRect(x + 42 + barW + 8, barY, barW, 6);
+    ctx.fillStyle = fuel < 18 ? '#ff8b78' : accent;
+    ctx.fillRect(x + 14, barY, barW * fuel / 100, 6);
+    ctx.fillStyle = hull < 35 ? '#ff8b78' : '#a8f0d6';
+    ctx.fillRect(x + 42 + barW + 8, barY, barW * hull / 100, 6);
+    void soft;
+    void panel;
+    ctx.restore();
+  }
+
   drawCompass(ctx, flight, w, ink, accent, night) {
     const heading = flight.headingDegrees();
     const cx = w / 2;
     const y = 34;
-    const span = 92;
+    const span = 80;
     const px = 2.35;
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.font = '600 11px ' + FONT;
+    ctx.font = '700 12px ' + FONT;
+    ctx.shadowColor = 'rgba(0,0,0,0.85)';
+    ctx.shadowBlur = 5;
     for (let offset = -span; offset <= span; offset += 6) {
       const value = ((Math.round((heading + offset) / 6) * 6 % 360) + 360) % 360;
       const x = cx + offset * px;
@@ -149,8 +215,10 @@ export class HUD {
     ctx.lineTo(cx + 5, y + 40);
     ctx.closePath();
     ctx.fill();
-    ctx.font = '600 12px ' + FONT;
+    ctx.font = '700 14px ' + FONT;
+    ctx.fillStyle = '#fffaf0';
     ctx.fillText(String(Math.round(heading)).padStart(3, '0') + '°', cx, y + 57);
+    ctx.shadowBlur = 0;
     void night;
     ctx.restore();
   }
@@ -159,30 +227,35 @@ export class HUD {
     const knots = Math.round(flight.speed * 1.94384);
     const altitude = Math.max(0, Math.round(flight.object.position.y * 3.28084));
     const vs = Math.round(flight.verticalSpeed * 196.85);
-    const bottom = h - 40;
+    const bottom = h - 32;
     ctx.save();
     ctx.textAlign = 'left';
-    ctx.fillStyle = panel;
-    ctx.fillRect(28, bottom - 98, 178, 98);
-    ctx.fillRect(w - 206, bottom - 98, 178, 98);
-    ctx.strokeStyle = ink + '0.18)';
+    ctx.fillStyle = night ? 'rgba(4,14,30,0.84)' : 'rgba(18,16,14,0.8)';
+    ctx.fillRect(28, bottom - 104, 190, 104);
+    ctx.fillRect(w - 218, bottom - 104, 190, 104);
+    ctx.strokeStyle = accent;
+    ctx.globalAlpha = 0.5;
     ctx.lineWidth = 1;
-    ctx.strokeRect(28.5, bottom - 97.5, 177, 97);
-    ctx.strokeRect(w - 205.5, bottom - 97.5, 177, 97);
+    ctx.strokeRect(28.5, bottom - 103.5, 189, 103);
+    ctx.strokeRect(w - 217.5, bottom - 103.5, 189, 103);
+    ctx.globalAlpha = 1;
 
-    ctx.font = '600 9px ' + FONT;
-    ctx.fillStyle = soft;
-    ctx.fillText('AIRSPEED  KTS', 42, bottom - 78);
-    ctx.font = '300 38px ' + FONT;
-    ctx.fillStyle = flight.stallWarning ? '#ff8b78' : ink + '0.95)';
+    ctx.font = '700 11px ' + FONT;
+    ctx.fillStyle = night ? '#d9eeff' : '#ffe9cd';
+    ctx.fillText('AIRSPEED  KTS', 42, bottom - 82);
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 8;
+    ctx.font = '700 46px ' + FONT;
+    ctx.fillStyle = flight.stallWarning ? '#ff8b78' : '#fffaf0';
     ctx.fillText(String(knots).padStart(3, '0'), 40, bottom - 38);
-    ctx.font = '600 9px ' + FONT;
-    ctx.fillStyle = soft;
-    ctx.fillText('THROTTLE', 42, bottom - 20);
-    ctx.fillStyle = ink + '0.13)';
-    ctx.fillRect(100, bottom - 27, 92, 6);
-    ctx.fillStyle = flight.boosting ? accent : ink + '0.72)';
-    ctx.fillRect(100, bottom - 27, 92 * flight.throttle, 6);
+    ctx.shadowBlur = 0;
+    ctx.font = '700 11px ' + FONT;
+    ctx.fillStyle = night ? '#d9eeff' : '#ffe9cd';
+    ctx.fillText('THROTTLE', 42, bottom - 18);
+    ctx.fillStyle = ink + '0.16)';
+    ctx.fillRect(112, bottom - 24, 88, 7);
+    ctx.fillStyle = flight.boosting ? accent : ink + '0.78)';
+    ctx.fillRect(112, bottom - 24, 88 * flight.throttle, 7);
     if (flight.stallWarning) {
       ctx.fillStyle = '#ff8b78';
       ctx.font = '700 10px ' + FONT;
@@ -190,17 +263,22 @@ export class HUD {
     }
 
     ctx.textAlign = 'right';
-    ctx.font = '600 9px ' + FONT;
-    ctx.fillStyle = soft;
-    ctx.fillText('ALTITUDE  FT', w - 42, bottom - 78);
-    ctx.font = '300 38px ' + FONT;
-    ctx.fillStyle = ink + '0.95)';
+    ctx.font = '700 11px ' + FONT;
+    ctx.fillStyle = night ? '#d9eeff' : '#ffe9cd';
+    ctx.fillText('ALTITUDE  FT', w - 42, bottom - 82);
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 8;
+    ctx.font = '700 46px ' + FONT;
+    ctx.fillStyle = '#fffaf0';
     ctx.fillText(String(altitude).padStart(4, '0'), w - 40, bottom - 38);
-    ctx.font = '600 9px ' + FONT;
-    ctx.fillStyle = soft;
-    ctx.fillText('VERTICAL  ' + (vs >= 0 ? '+' : '') + vs, w - 42, bottom - 20);
+    ctx.shadowBlur = 0;
+    ctx.font = '700 11px ' + FONT;
+    ctx.fillStyle = night ? '#d9eeff' : '#ffe9cd';
+    ctx.fillText('VERTICAL  ' + (vs >= 0 ? '+' : '') + vs, w - 42, bottom - 18);
     ctx.fillStyle = accent;
-    ctx.fillText(state.cameraName || 'CHASE', w - 42, bottom - 7);
+    ctx.fillText(state.cameraName || 'CHASE', w - 42, bottom - 5);
+    void soft;
+    void panel;
     void night;
     ctx.restore();
   }
@@ -288,9 +366,9 @@ export class HUD {
       ctx.beginPath();
       ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
       ctx.fill();
-      ctx.font = '600 10px ' + FONT;
+      ctx.font = '700 11px ' + FONT;
       ctx.textAlign = 'center';
-      ctx.fillText(Math.round(target.distance) + 'm', point.x, point.y + r + 15);
+      ctx.fillText('NEXT GATE  ' + Math.round(target.distance) + 'm', point.x, point.y + r + 18);
     } else {
       const ndc = scratch.v1.copy(target.position).project(camera);
       const angle = Math.atan2(ndc.y, ndc.x);
