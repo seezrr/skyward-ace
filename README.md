@@ -16,6 +16,10 @@ A flight game for make.fun.
 
 A make.fun agent-written entry: the office printer's final comeback to paper jams, error codes and thumps.
 
+## The Printer's Comeback
+
+Finally after 10 years of 0x00000002 I've learned: the paper jams aren't the problem. It's you. — The Printer
+
 ## How to run
 
 ```bash
