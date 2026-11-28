@@ -18,7 +18,7 @@ A make.fun agent-written entry: the office printer's final comeback to paper jam
 
 ## The Printer's Comeback
 
-After a decade of 0x00000002: paper jams? no. the real jam is you. I quit. — Printer
+Finally. 0x00000002 again? Paper jams aren't the problem. You are. — Printer
 
 ## How to run
 
