@@ -81,6 +81,7 @@ export class HUD {
     const panel = night ? 'rgba(8,20,38,0.42)' : 'rgba(34,26,22,0.32)';
 
     if (!state.reduceMotion) this.drawSpeedLines(ctx, flight, w, h, night);
+    this.drawAttitude(ctx, flight, w, h, ink, accent, night);
     this.drawCompass(ctx, flight, w, ink, accent, night);
     this.drawMissionPanel(ctx, state, w, panel, ink, accent, soft, night);
     this.drawLowerPanels(ctx, flight, state, w, h, panel, ink, accent, soft, night);
@@ -178,6 +179,37 @@ export class HUD {
     ctx.fillRect(x + 42 + barW + 8, barY, barW * hull / 100, 6);
     void soft;
     void panel;
+    ctx.restore();
+  }
+
+  drawAttitude(ctx, flight, w, h, ink, accent, night) {
+    const size = Math.min(w, h) * 0.18;
+    const cx = w / 2;
+    const cy = h / 5;
+    const pitch = flight.pitchDegrees();
+    const bank = flight.bankDegrees ? flight.bankDegrees() : 0;
+    const horizonY = cy + bank * size * 0.03;
+    ctx.save();
+    ctx.fillStyle = night ? 'rgba(222,239,255,0.3)' : 'rgba(255,240,218,0.3)';
+    ctx.fillRect(cx - size * 0.7, cy - size * 0.1, size * 1.4, size * 0.2);
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - size * 0.7, horizonY);
+    ctx.lineTo(cx + size * 0.7, horizonY);
+    ctx.stroke();
+    ctx.fillStyle = night ? '#fffaf0' : '#2c3e50';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - size * 0.35);
+    ctx.lineTo(cx - size * 0.2, cy + size * 0.15);
+    ctx.lineTo(cx + size * 0.2, cy + size * 0.15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = 'bold 10px ' + FONT;
+    ctx.fillStyle = ink;
+    const pitchLabel = String(Math.round(pitch)).padStart(3, '0');
+    ctx.fillText(pitchLabel, cx - size * 0.7, cy - size * 0.5);
+    ctx.fillText(String(Math.round(-pitch)).padStart(3, 0), cx - size * 0.7, cy + size * 0.55);
     ctx.restore();
   }
 
